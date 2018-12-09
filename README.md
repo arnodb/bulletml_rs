@@ -1,4 +1,6 @@
 # bulletml_rs
+[![Build Status](https://travis-ci.com/arnodb/bulletml_rs.svg?branch=master)](https://travis-ci.com/arnodb/bulletml_rs)
+
 A rewrite of the original C++ library from Shinichiro Hamaji (http://shinh.skr.jp/libbulletml/) in Rust.
 
 ## Purpose
