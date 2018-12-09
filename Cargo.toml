@@ -1,0 +1,10 @@
+[package]
+name = "bulletml"
+version = "0.1.0"
+authors = ["Arnaud de Bossoreille <arnaud.debossoreille@gmail.com>"]
+
+[dependencies]
+failure = "0.1"
+indextree = "3.0"
+meval = "0.2"
+roxmltree = "0.3"
