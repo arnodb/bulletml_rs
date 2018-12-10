@@ -912,9 +912,6 @@ impl RunnerImpl {
         for child in children {
             let child_node = &bml.arena[child];
             if let BulletMLNode::Param(expr) = &child_node.data {
-                if parameters.is_empty() {
-                    parameters.push(0.);
-                }
                 parameters.push(self.get_number_contents(expr, data, runner));
             }
         }
@@ -1140,7 +1137,7 @@ mod test_runner {
             self.runners.reserve(new_runners.len());
             for mut runner in new_runners.drain(..) {
                 runner.app_runner.index = self.runners.len();
-                runner.app_runner.log.var_name = format!("app_runner[{}].log", self.runners.len());
+                runner.app_runner.log.var_name = format!("app_runners[{}].log", self.runners.len());
                 self.runners.push(runner);
             }
         }
@@ -1424,6 +1421,8 @@ mod test_runner {
             app_runners[i].assert_final_turn(62);
         }
 
+        let v1s = [75, 70, 65, 60, 55, 50, 80, 75, 70, 65, 60, 55];
+        let v2_factors = [0, 0, 0, 0, 0, 0, 15, 10, 6, 3, 1, 0];
         for i in 3..99 {
             app_runners[i]
                 .log
@@ -1433,6 +1432,11 @@ mod test_runner {
                 app_runners[i]
                     .log
                     .assert_log(r#"Wait(Expr { rpn: [Var("v1")] })"#, 1);
+                for k in 0..v1s[(i - 3) / 8 % 12] {
+                    app_runners[i]
+                        .log
+                        .assert_log(&format!(r#"=== {}"#, (i - 3) / 8 * 5 + k + 3), 1);
+                }
                 app_runners[i].log.assert_log(r#"Fire(None)"#, 1);
                 app_runners[i].log.assert_log(r#"Bullet(None)"#, 1);
                 app_runners[i].log.assert_log(r#"Repeat"#, 1);
@@ -1443,33 +1447,105 @@ mod test_runner {
                 }
                 app_runners[i].log.assert_log(r#"Vanish"#, 1);
             }
-            app_runners[i]
-                .log
-                .assert_log(&format!(r#"=== {}"#, (i - 3) / 8 * 5 + 3), 1);
-            app_runners[i].assert_final_turn(2);
+            app_runners[i].log.assert_log(
+                &format!(r#"=== {}"#, (i - 3) / 8 * 5 + v1s[(i - 3) / 8 % 12] + 3),
+                1,
+            );
+            app_runners[i].assert_final_turn((2 + v1s[(i - 3) / 8 % 12]) as u32);
         }
         main_log.assert_log(r#"[0] create_bullet(30, 2)"#, 1);
         main_log.assert_log(r#"[0] create_bullet(330, 2)"#, 1);
         for i in 0..12 {
-            for _ in 0..2 {
-                for k in 0..4 {
-                    main_log.assert_log(
-                        &format!(r#"[{}] create_bullet({}, 0.6)"#, 5 * i + 1, k * 90),
-                        1,
-                    );
-                }
+            for j in 0..8 {
+                main_log.assert_log(
+                    &format!(r#"[{}] create_bullet({}, 0.6)"#, 5 * i + 1, j * 90 % 360),
+                    1,
+                );
             }
-            for _ in 0..8 {
+        }
+        for i in 0..2 {
+            for j in 0..48 {
                 let mut spd = 1.6;
                 for _ in 0..8 {
+                    let mut dir = v2_factors[j / 8 + 6 * i] * (j as isize / 4 % 2 * -2 + 1);
+                    if dir > 360 {
+                        dir -= 360;
+                    }
+                    if dir < 0 {
+                        dir += 360;
+                    }
                     main_log.assert_log(
-                        &format!(r#"[{}] create_simple_bullet(0, {})"#, 5 * i + 2, spd),
+                        &format!(
+                            r#"[{}] create_simple_bullet({}, {})"#,
+                            35 * i + 77,
+                            dir,
+                            spd
+                        ),
                         1,
                     );
                     spd += 0.1;
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_tt_morph_0to1() {
+        let bml = BulletMLParser::parse(
+            r##"<?xml version="1.0" ?>
+<!DOCTYPE bulletml SYSTEM "http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/bulletml.dtd">
+
+<bulletml type="vertical"
+          xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
+
+<action label="top">
+        <changeSpeed>
+                <speed>0</speed>
+                <term>1</term>
+        </changeSpeed>
+        <wait>1</wait>
+        <changeSpeed>
+                <speed>1</speed>
+                <term>60-$rank*50</term>
+        </changeSpeed>
+        <wait>60-$rank*50</wait>
+        <fire>
+                <direction type="relative">0</direction>
+                <bullet/>
+        </fire>
+</action>
+
+</bulletml>"##,
+        )
+        .unwrap();
+        let mut manager = TestManager::new(bml);
+        let mut main_log = TestLog::new("main_log".to_string());
+        manager.run_test(100, &mut main_log);
+        let mut app_runners = manager.into_app_runners();
+        app_runners[0].log.assert_log(r#"=== 0"#, 1);
+        app_runners[0].log.assert_log(r#"Action(Some("top"))"#, 1);
+        app_runners[0].log.assert_log(r#"ChangeSpeed"#, 1);
+        app_runners[0]
+            .log
+            .assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        app_runners[0].log.assert_log(r#"=== 1"#, 1);
+        app_runners[0].log.assert_log(r#"ChangeSpeed"#, 1);
+        app_runners[0].log.assert_log(r#"Wait(Expr { rpn: [Number(60.0), Var("rank"), Number(50.0), Binary(Times), Binary(Minus)] })"#, 1);
+        app_runners[0].log.assert_log(r#"=== 2"#, 1);
+        app_runners[0].log.assert_log(r#"=== 3"#, 1);
+        app_runners[0].log.assert_log(r#"=== 4"#, 1);
+        app_runners[0].log.assert_log(r#"=== 5"#, 1);
+        app_runners[0].log.assert_log(r#"=== 6"#, 1);
+        app_runners[0].log.assert_log(r#"=== 7"#, 1);
+        app_runners[0].log.assert_log(r#"=== 8"#, 1);
+        app_runners[0].log.assert_log(r#"=== 9"#, 1);
+        app_runners[0].log.assert_log(r#"=== 10"#, 1);
+        app_runners[0].log.assert_log(r#"=== 11"#, 1);
+        app_runners[0].log.assert_log(r#"Fire(None)"#, 1);
+        app_runners[0].log.assert_log(r#"Bullet(None)"#, 1);
+        app_runners[0].log.assert_log(r#"=== 12"#, 1);
+
+        main_log.assert_log(r#"[11] create_simple_bullet(0, 10)"#, 1);
     }
 
     #[test]
