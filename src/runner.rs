@@ -37,13 +37,9 @@ impl<'a, R> Runner<R> {
         let top_actions: Vec<NodeId> = bml
             .root
             .children(&bml.arena)
-            .filter_map(|child| {
-                let child_node = &bml.arena[child];
-                if child_node.data.is_top_action() {
-                    Some(child)
-                } else {
-                    None
-                }
+            .filter(|child| {
+                let child_node = &bml.arena[*child];
+                child_node.data.is_top_action()
             })
             .collect();
         let mut runners = Vec::with_capacity(top_actions.len());
@@ -258,14 +254,13 @@ impl RunnerImpl {
         self.changes(data, runner);
         self.end_turn = runner.get_turn(&data.data);
         if self.act.is_none() {
-            if !self.is_turn_end() {
-                if self.change_dir.is_none()
-                    && self.change_spd.is_none()
-                    && self.accel_x.is_none()
-                    && self.accel_y.is_none()
-                {
-                    self.end = true;
-                }
+            if !self.is_turn_end()
+                && self.change_dir.is_none()
+                && self.change_spd.is_none()
+                && self.accel_x.is_none()
+                && self.accel_y.is_none()
+            {
+                self.end = true;
             }
             return;
         }
@@ -391,16 +386,14 @@ impl RunnerImpl {
                 BulletMLNode::Vanish => self.run_vanish(data, runner),
                 _ => (),
             }
-            if self.act.is_none() {
-                if !self.root_nodes.contains(&prev) {
-                    let parent = prev_node.parent();
-                    if let Some(parent) = parent {
-                        if let BulletMLNode::BulletML { .. } = bml.arena[parent].data {
-                            let top = self.ref_stack.pop().unwrap();
-                            prev = top.0;
-                            prev_node = &bml.arena[prev];
-                            self.parameters = top.1;
-                        }
+            if self.act.is_none() && !self.root_nodes.contains(&prev) {
+                let parent = prev_node.parent();
+                if let Some(parent) = parent {
+                    if let BulletMLNode::BulletML { .. } = bml.arena[parent].data {
+                        let top = self.ref_stack.pop().unwrap();
+                        prev = top.0;
+                        prev_node = &bml.arena[prev];
+                        self.parameters = top.1;
                     }
                 }
             }
@@ -480,13 +473,9 @@ impl RunnerImpl {
         if let Some(parent) = parent {
             parent
                 .children(&bml.arena)
-                .filter_map(|child| {
-                    let child_node = &bml.arena[child];
-                    if m(&child_node.data) {
-                        Some(child)
-                    } else {
-                        None
-                    }
+                .filter(|child| {
+                    let child_node = &bml.arena[*child];
+                    m(&child_node.data)
                 })
                 .collect()
         } else {
@@ -744,7 +733,7 @@ impl RunnerImpl {
                 act_turn,
                 final_turn,
                 dir_first,
-                dir_first + direction * term as f64,
+                dir_first + direction * f64::from(term),
             ));
         } else {
             let dir_space1 = direction - dir_first;
@@ -790,7 +779,7 @@ impl RunnerImpl {
             {
                 let term = self.get_number_contents(term, data, runner) as u32;
                 let spd = if let Some(SpeedType::Sequence) = spd_type {
-                    self.get_number_contents(spd, data, runner) * term as f64
+                    self.get_number_contents(spd, data, runner) * f64::from(term)
                         + runner.get_bullet_speed(&data.data)
                 } else {
                     self.get_speed(*spd_type, spd, data, runner)
@@ -894,7 +883,7 @@ impl RunnerImpl {
         let act_turn = self.act_turn.unwrap_or(0);
         let final_turn = act_turn + term;
         let final_spd = match hv_type {
-            HVType::Sequence => first_spd + value * term as f64,
+            HVType::Sequence => first_spd + value * f64::from(term),
             HVType::Relative => first_spd + value,
             HVType::Absolute => value,
         };
@@ -1584,4 +1573,218 @@ mod test_runner {
             logs[2].assert_log(r#"do_change_speed(1)"#, 1);
         }
     }
+
+    #[test]
+    fn test_tt_morph_twin() {
+        let bml = BulletMLParser::parse(
+            r##"<?xml version="1.0" ?>
+<!DOCTYPE bulletml SYSTEM "http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/bulletml.dtd">
+
+<bulletml type="vertical"
+          xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
+
+
+ <action label="top">
+  <wait>1</wait>
+  <fire>
+   <bullet>
+        <direction type="relative">0</direction>
+        <speed type="relative">$rank</speed>
+    <actionRef label="ofs">
+     <param>90</param>
+    </actionRef>
+   </bullet>
+  </fire>
+  <fire>
+   <bullet>
+        <direction type="relative">0</direction>
+        <speed type="relative">$rank</speed>
+    <actionRef label="ofs">
+     <param>-90</param>
+    </actionRef>
+   </bullet>
+  </fire>
+  <vanish/>
+ </action>
+
+<action label="ofs">
+  <changeDirection>
+   <direction type="relative">$1</direction>
+   <term>1</term>
+  </changeDirection>
+  <wait>1</wait>
+  <changeDirection>
+   <direction type="relative">0-$1</direction>
+   <term>1</term>
+  </changeDirection>
+  <wait>1</wait>
+  <fire>
+        <direction type="relative">0</direction>
+        <speed type="relative">-$rank</speed>
+        <bullet/>
+  </fire>
+  <vanish/>
+</action>
+
+</bulletml>"##,
+        )
+        .unwrap();
+        let mut manager = TestManager::new(bml);
+        let mut logs = Vec::new();
+        manager.run_test(100, &mut logs);
+        logs[0].assert_log(r#"=== 0"#, 1);
+        logs[0].assert_log(r#"Action(Some("top"))"#, 1);
+        logs[0].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[0].assert_log(r#"=== 1"#, 1);
+        logs[0].assert_log(r#"Fire(None)"#, 1);
+        logs[0].assert_log(r#"Bullet(None)"#, 1);
+        logs[0].assert_log(r#"create_bullet(0, 2)"#, 1);
+        logs[0].assert_log(r#"Fire(None)"#, 1);
+        logs[0].assert_log(r#"Bullet(None)"#, 1);
+        logs[0].assert_log(r#"create_bullet(0, 2)"#, 1);
+        logs[0].assert_log(r#"Vanish"#, 1);
+        logs[0].assert_log(r#"=== 2"#, 1);
+
+        logs[1].assert_log(r#"=== 2"#, 1);
+        logs[1].assert_log(r#"ActionRef("ofs")"#, 1);
+        logs[1].assert_log(r#"Action(Some("ofs"))"#, 1);
+        logs[1].assert_log(r#"ChangeDirection"#, 1);
+        logs[1].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[1].assert_log(r#"=== 3"#, 1);
+        logs[1].assert_log(r#"do_change_direction(90)"#, 1);
+        logs[1].assert_log(r#"ChangeDirection"#, 1);
+        logs[1].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[1].assert_log(r#"=== 4"#, 1);
+        logs[1].assert_log(r#"do_change_direction(-90)"#, 1);
+        logs[1].assert_log(r#"Fire(None)"#, 1);
+        logs[1].assert_log(r#"Bullet(None)"#, 1);
+        logs[1].assert_log(r#"create_simple_bullet(0, 0)"#, 1);
+        logs[1].assert_log(r#"Vanish"#, 1);
+        logs[1].assert_log(r#"=== 5"#, 1);
+
+        logs[2].assert_log(r#"=== 2"#, 1);
+        logs[2].assert_log(r#"ActionRef("ofs")"#, 1);
+        logs[2].assert_log(r#"Action(Some("ofs"))"#, 1);
+        logs[2].assert_log(r#"ChangeDirection"#, 1);
+        logs[2].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[2].assert_log(r#"=== 3"#, 1);
+        logs[2].assert_log(r#"do_change_direction(-90)"#, 1);
+        logs[2].assert_log(r#"ChangeDirection"#, 1);
+        logs[2].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[2].assert_log(r#"=== 4"#, 1);
+        logs[2].assert_log(r#"do_change_direction(90)"#, 1);
+        logs[2].assert_log(r#"Fire(None)"#, 1);
+        logs[2].assert_log(r#"Bullet(None)"#, 1);
+        logs[2].assert_log(r#"create_simple_bullet(0, 0)"#, 1);
+        logs[2].assert_log(r#"Vanish"#, 1);
+        logs[2].assert_log(r#"=== 5"#, 1);
+    }
+
+    #[test]
+    fn test_tt_morph_wedge_half() {
+        let bml = BulletMLParser::parse(
+            r##"<?xml version="1.0" ?>
+<!DOCTYPE bulletml SYSTEM "http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/bulletml.dtd">
+
+<bulletml type="vertical"
+          xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
+
+ <action label="top">
+  <wait>1</wait>
+  <fire>
+   <bullet>
+        <direction type="relative">0</direction>
+        <speed type="relative">$rank*0.4+0.2</speed>
+    <actionRef label="ofs">
+     <param>0</param>
+     <param>-0.08</param>
+    </actionRef>
+   </bullet>
+  </fire>
+  <fire>
+   <bullet>
+        <direction type="relative">0</direction>
+        <speed type="relative">$rank*0.4+0.2</speed>
+    <actionRef label="ofs">
+     <param>-120</param>
+     <param>0.08</param>
+    </actionRef>
+   </bullet>
+  </fire>
+  <vanish/>
+ </action>
+
+<action label="ofs">
+  <changeDirection>
+   <direction type="relative">$1</direction>
+   <term>1</term>
+  </changeDirection>
+  <wait>1</wait>
+  <changeDirection>
+   <direction type="relative">0-$1</direction>
+   <term>1</term>
+  </changeDirection>
+  <wait>1</wait>
+  <fire>
+        <direction type="relative">0</direction>
+        <speed type="relative">$2-$rank*0.4-0.2</speed>
+        <bullet/>
+  </fire>
+  <vanish/>
+</action>
+
+</bulletml>"##,
+        )
+        .unwrap();
+        let mut manager = TestManager::new(bml);
+        let mut logs = Vec::new();
+        manager.run_test(100, &mut logs);
+        logs[0].assert_log(r#"=== 0"#, 1);
+        logs[0].assert_log(r#"Action(Some("top"))"#, 1);
+        logs[0].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[0].assert_log(r#"=== 1"#, 1);
+        logs[0].assert_log(r#"Fire(None)"#, 1);
+        logs[0].assert_log(r#"Bullet(None)"#, 1);
+        logs[0].assert_log(r#"create_bullet(0, 1.6)"#, 1);
+        logs[0].assert_log(r#"Fire(None)"#, 1);
+        logs[0].assert_log(r#"Bullet(None)"#, 1);
+        logs[0].assert_log(r#"create_bullet(0, 1.6)"#, 1);
+        logs[0].assert_log(r#"Vanish"#, 1);
+        logs[0].assert_log(r#"=== 2"#, 1);
+
+        logs[1].assert_log(r#"=== 2"#, 1);
+        logs[1].assert_log(r#"ActionRef("ofs")"#, 1);
+        logs[1].assert_log(r#"Action(Some("ofs"))"#, 1);
+        logs[1].assert_log(r#"ChangeDirection"#, 1);
+        logs[1].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[1].assert_log(r#"=== 3"#, 1);
+        logs[1].assert_log(r#"do_change_direction(0)"#, 1);
+        logs[1].assert_log(r#"ChangeDirection"#, 1);
+        logs[1].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[1].assert_log(r#"=== 4"#, 1);
+        logs[1].assert_log(r#"do_change_direction(0)"#, 1);
+        logs[1].assert_log(r#"Fire(None)"#, 1);
+        logs[1].assert_log(r#"Bullet(None)"#, 1);
+        logs[1].assert_log(r#"create_simple_bullet(0, 0.31999999999999995)"#, 1);
+        logs[1].assert_log(r#"Vanish"#, 1);
+        logs[1].assert_log(r#"=== 5"#, 1);
+
+        logs[2].assert_log(r#"=== 2"#, 1);
+        logs[2].assert_log(r#"ActionRef("ofs")"#, 1);
+        logs[2].assert_log(r#"Action(Some("ofs"))"#, 1);
+        logs[2].assert_log(r#"ChangeDirection"#, 1);
+        logs[2].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[2].assert_log(r#"=== 3"#, 1);
+        logs[2].assert_log(r#"do_change_direction(-120)"#, 1);
+        logs[2].assert_log(r#"ChangeDirection"#, 1);
+        logs[2].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[2].assert_log(r#"=== 4"#, 1);
+        logs[2].assert_log(r#"do_change_direction(120)"#, 1);
+        logs[2].assert_log(r#"Fire(None)"#, 1);
+        logs[2].assert_log(r#"Bullet(None)"#, 1);
+        logs[2].assert_log(r#"create_simple_bullet(0, 0.48)"#, 1);
+        logs[2].assert_log(r#"Vanish"#, 1);
+        logs[2].assert_log(r#"=== 5"#, 1);
+    }
+
 }
