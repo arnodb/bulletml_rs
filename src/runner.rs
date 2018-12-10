@@ -122,7 +122,7 @@ pub trait AppRunner<D> {
     }
     fn get_rand(&self, data: &mut D) -> f64;
     #[cfg(test)]
-    fn log(&mut self, _node: &BulletMLNode) {}
+    fn log(&mut self, _data: &mut D, _node: &BulletMLNode) {}
 }
 
 struct Validatable<T: Copy> {
@@ -169,7 +169,12 @@ struct LinearFunc<X, Y> {
 impl<X, Y> LinearFunc<X, Y>
 where
     X: Copy + PartialOrd + std::ops::Sub<Output = X> + Into<Y>,
-    Y: Copy + Default + std::ops::Add<Output = Y> + std::ops::Mul<Output = Y>,
+    Y: Copy
+        + Default
+        + std::ops::Add<Output = Y>
+        + std::ops::Sub<Output = Y>
+        + std::ops::Mul<Output = Y>
+        + std::ops::Div<Output = Y>,
 {
     fn new(first_x: X, last_x: X, first_y: Y, last_y: Y) -> Self {
         Self {
@@ -177,7 +182,7 @@ where
             last_x,
             first_y,
             last_y,
-            gradient: Y::default(),
+            gradient: (last_y - first_y) / (last_x - first_x).into(),
         }
     }
 
@@ -364,7 +369,7 @@ impl RunnerImpl {
             let mut prev_node = &bml.arena[act];
             let node = &bml.arena[act];
             #[cfg(test)]
-            runner.log(&node.data);
+            runner.log(&mut data.data, &node.data);
             match &node.data {
                 BulletMLNode::Bullet { .. } => self.run_bullet(data, runner),
                 BulletMLNode::Action { .. } => self.run_action(node),
@@ -953,7 +958,6 @@ mod test_runner {
         index: usize,
         turn: u32,
         new_runners: Vec<Runner<TestAppRunner>>,
-        log: TestLog,
     }
 
     impl From<Runner<TestAppRunner>> for TestAppRunner {
@@ -1025,7 +1029,6 @@ mod test_runner {
                 index,
                 turn: 0,
                 new_runners: Vec::new(),
-                log: TestLog::new(format!("app_runners[{}].log", index)),
             }
         }
 
@@ -1033,18 +1036,16 @@ mod test_runner {
             self.turn += 1;
         }
 
-        fn log_iteration(&mut self, iteration: u32) {
-            self.log.log.push(format!("=== {}", iteration));
-        }
-
-        fn assert_final_turn(&self, expected: u32) {
-            assert_eq!(self.turn, expected);
+        fn log_iteration(&mut self, iteration: u32, logs: &mut Vec<TestLog>) {
+            if self.index >= logs.len() {
+                logs.push(TestLog::new(format!("logs[{}]", self.index)));
+            }
+            logs[self.index].log.push(format!("=== {}", iteration));
         }
     }
 
     struct TestAppData<'a> {
-        iteration: u32,
-        main_log: &'a mut TestLog,
+        logs: &'a mut Vec<TestLog>,
     }
 
     impl<'a> AppRunner<TestAppData<'a>> for TestAppRunner {
@@ -1069,10 +1070,9 @@ mod test_runner {
         }
 
         fn create_simple_bullet(&mut self, data: &mut TestAppData<'a>, direction: f64, speed: f64) {
-            data.main_log.log.push(format!(
-                "[{}] create_simple_bullet({}, {})",
-                data.iteration, direction, speed
-            ));
+            data.logs[self.index]
+                .log
+                .push(format!("create_simple_bullet({}, {})", direction, speed));
         }
 
         fn create_bullet(
@@ -1082,10 +1082,9 @@ mod test_runner {
             direction: f64,
             speed: f64,
         ) {
-            data.main_log.log.push(format!(
-                "[{}] create_bullet({}, {})",
-                data.iteration, direction, speed
-            ));
+            data.logs[self.index]
+                .log
+                .push(format!("create_bullet({}, {})", direction, speed));
             let runner = Runner::new_from_state(TestAppRunner::new(0), state);
             self.new_runners.push(runner);
         }
@@ -1096,12 +1095,24 @@ mod test_runner {
 
         fn do_vanish(&self, _data: &mut TestAppData<'a>) {}
 
+        fn do_change_direction(&self, data: &mut TestAppData<'a>, direction: f64) {
+            data.logs[self.index]
+                .log
+                .push(format!("do_change_direction({})", direction));
+        }
+
+        fn do_change_speed(&self, data: &mut TestAppData<'a>, speed: f64) {
+            data.logs[self.index]
+                .log
+                .push(format!("do_change_speed({})", speed));
+        }
+
         fn get_rand(&self, _data: &mut TestAppData<'a>) -> f64 {
             0.42
         }
 
-        fn log(&mut self, node: &BulletMLNode) {
-            self.log.log.push(format!("{:?}", node));
+        fn log(&mut self, data: &mut TestAppData<'a>, node: &BulletMLNode) {
+            data.logs[self.index].log.push(format!("{:?}", node));
         }
     }
 
@@ -1118,17 +1129,14 @@ mod test_runner {
             }
         }
 
-        fn run(&mut self, iteration: u32, main_log: &mut TestLog) {
+        fn run(&mut self, iteration: u32, logs: &mut Vec<TestLog>) {
             let mut new_runners = Vec::new();
             for runner in &mut self.runners {
                 if !runner.is_end() {
-                    runner.app_runner.log_iteration(iteration);
+                    runner.app_runner.log_iteration(iteration, logs);
                     runner.run(&mut RunnerData {
                         bml: &self.bml,
-                        data: &mut TestAppData {
-                            iteration,
-                            main_log,
-                        },
+                        data: &mut TestAppData { logs },
                     });
                     new_runners.extend(&mut runner.new_runners.drain(..));
                     runner.app_runner.next_turn();
@@ -1137,21 +1145,16 @@ mod test_runner {
             self.runners.reserve(new_runners.len());
             for mut runner in new_runners.drain(..) {
                 runner.app_runner.index = self.runners.len();
-                runner.app_runner.log.var_name = format!("app_runners[{}].log", self.runners.len());
                 self.runners.push(runner);
             }
         }
 
-        fn run_test(&mut self, max_iter: u32, main_log: &mut TestLog) {
+        fn run_test(&mut self, max_iter: u32, logs: &mut Vec<TestLog>) {
             let runner = Runner::new(TestAppRunner::new(self.runners.len()), &self.bml);
             self.runners.push(runner);
             for i in 0..max_iter {
-                self.run(i, main_log);
+                self.run(i, logs);
             }
-        }
-
-        fn into_app_runners(self) -> Vec<TestAppRunner> {
-            self.runners.into_iter().map(|r| r.into()).collect()
         }
     }
 
@@ -1170,17 +1173,14 @@ mod test_runner {
         )
         .unwrap();
         let mut manager = TestManager::new(bml);
-        let mut main_log = TestLog::new("main_log".to_string());
-        manager.run_test(100, &mut main_log);
-        let mut app_runners = manager.into_app_runners();
-        app_runners[0].log.assert_log(r#"=== 0"#, 1);
-        app_runners[0].log.assert_log(r#"Action(Some("top"))"#, 1);
-        app_runners[0].log.assert_log(r#"Fire(None)"#, 1);
-        app_runners[0].log.assert_log(r#"Bullet(None)"#, 1);
-        app_runners[0].log.assert_log(r#"=== 1"#, 1);
-        app_runners[0].assert_final_turn(2);
-
-        main_log.assert_log(r#"[0] create_simple_bullet(0, 10)"#, 1);
+        let mut logs = Vec::new();
+        manager.run_test(100, &mut logs);
+        logs[0].assert_log(r#"=== 0"#, 1);
+        logs[0].assert_log(r#"Action(Some("top"))"#, 1);
+        logs[0].assert_log(r#"Fire(None)"#, 1);
+        logs[0].assert_log(r#"Bullet(None)"#, 1);
+        logs[0].assert_log(r#"create_simple_bullet(0, 10)"#, 1);
+        logs[0].assert_log(r#"=== 1"#, 1);
     }
 
     #[test]
@@ -1207,29 +1207,20 @@ mod test_runner {
         )
         .unwrap();
         let mut manager = TestManager::new(bml);
-        let mut main_log = TestLog::new("main_log".to_string());
-        manager.run_test(110000, &mut main_log);
-        let mut app_runners = manager.into_app_runners();
-        app_runners[0].log.assert_log(r#"=== 0"#, 1);
-        app_runners[0].log.assert_log(r#"Action(Some("top"))"#, 1);
-        app_runners[0].log.assert_log(r#"Repeat"#, 1);
+        let mut logs = Vec::new();
+        manager.run_test(110000, &mut logs);
+        logs[0].assert_log(r#"=== 0"#, 1);
+        logs[0].assert_log(r#"Action(Some("top"))"#, 1);
+        logs[0].assert_log(r#"Repeat"#, 1);
         for i in 0..1000 {
-            app_runners[0].log.assert_log(r#"Action(None)"#, 1);
-            app_runners[0].log.assert_log(r#"Fire(None)"#, 1);
-            app_runners[0].log.assert_log(r#"Bullet(None)"#, 1);
-            app_runners[0]
-                .log
-                .assert_log(r#"Wait(Expr { rpn: [Number(100.0)] })"#, 1);
+            logs[0].assert_log(r#"Action(None)"#, 1);
+            logs[0].assert_log(r#"Fire(None)"#, 1);
+            logs[0].assert_log(r#"Bullet(None)"#, 1);
+            logs[0].assert_log(r#"create_simple_bullet(0, 1)"#, 1);
+            logs[0].assert_log(r#"Wait(Expr { rpn: [Number(100.0)] })"#, 1);
             for j in 0..100 {
-                app_runners[0]
-                    .log
-                    .assert_log(&format!(r#"=== {}"#, i * 100 + j + 1), 1);
+                logs[0].assert_log(&format!(r#"=== {}"#, i * 100 + j + 1), 1);
             }
-        }
-        app_runners[0].assert_final_turn(100001);
-
-        for i in 0..1000 {
-            main_log.assert_log(&format!(r#"[{}] create_simple_bullet(0, 1)"#, i * 100), 1);
         }
     }
 
@@ -1365,127 +1356,79 @@ mod test_runner {
         )
         .unwrap();
         let mut manager = TestManager::new(bml);
-        let mut main_log = TestLog::new("main_log".to_string());
-        manager.run_test(1000, &mut main_log);
-        let mut app_runners = manager.into_app_runners();
-        app_runners[0].log.assert_log(r#"=== 0"#, 1);
-        app_runners[0].log.assert_log(r#"Action(Some("top"))"#, 1);
-        app_runners[0].log.assert_log(r#"Fire(None)"#, 1);
-        app_runners[0]
-            .log
-            .assert_log(r#"BulletRef("parentbit")"#, 1);
-        app_runners[0]
-            .log
-            .assert_log(r#"Bullet(Some("parentbit"))"#, 1);
-        app_runners[0].log.assert_log(r#"Fire(None)"#, 1);
-        app_runners[0]
-            .log
-            .assert_log(r#"BulletRef("parentbit")"#, 1);
-        app_runners[0]
-            .log
-            .assert_log(r#"Bullet(Some("parentbit"))"#, 1);
-        app_runners[0]
-            .log
-            .assert_log(r#"Wait(Expr { rpn: [Number(300.0)] })"#, 1);
+        let mut logs = Vec::new();
+        manager.run_test(1000, &mut logs);
+        logs[0].assert_log(r#"=== 0"#, 1);
+        logs[0].assert_log(r#"Action(Some("top"))"#, 1);
+        logs[0].assert_log(r#"Fire(None)"#, 1);
+        logs[0].assert_log(r#"BulletRef("parentbit")"#, 1);
+        logs[0].assert_log(r#"Bullet(Some("parentbit"))"#, 1);
+        logs[0].assert_log(r#"create_bullet(30, 2)"#, 1);
+        logs[0].assert_log(r#"Fire(None)"#, 1);
+        logs[0].assert_log(r#"BulletRef("parentbit")"#, 1);
+        logs[0].assert_log(r#"Bullet(Some("parentbit"))"#, 1);
+        logs[0].assert_log(r#"create_bullet(330, 2)"#, 1);
+        logs[0].assert_log(r#"Wait(Expr { rpn: [Number(300.0)] })"#, 1);
         for i in 0..300 {
-            app_runners[0]
-                .log
-                .assert_log(&format!(r#"=== {}"#, i + 1), 1);
+            logs[0].assert_log(&format!(r#"=== {}"#, i + 1), 1);
         }
-        app_runners[0].assert_final_turn(301);
 
         for i in 1..3 {
-            app_runners[i].log.assert_log(r#"=== 1"#, 1);
-            app_runners[i].log.assert_log(r#"Action(None)"#, 1);
+            logs[i].assert_log(r#"=== 1"#, 1);
+            logs[i].assert_log(r#"Action(None)"#, 1);
             for j in 0..12 {
-                app_runners[i].log.assert_log(r#"ActionRef("cross")"#, 1);
-                app_runners[i].log.assert_log(r#"Action(Some("cross"))"#, 1);
-                for _ in 0..4 {
-                    app_runners[i].log.assert_log(r#"Fire(None)"#, 1);
-                    app_runners[i].log.assert_log(r#"BulletRef("aimbit")"#, 1);
-                    app_runners[i]
-                        .log
-                        .assert_log(r#"Bullet(Some("aimbit"))"#, 1);
+                logs[i].assert_log(r#"ActionRef("cross")"#, 1);
+                logs[i].assert_log(r#"Action(Some("cross"))"#, 1);
+                for k in 0..4 {
+                    logs[i].assert_log(r#"Fire(None)"#, 1);
+                    logs[i].assert_log(r#"BulletRef("aimbit")"#, 1);
+                    logs[i].assert_log(r#"Bullet(Some("aimbit"))"#, 1);
+                    logs[i].assert_log(&format!(r#"create_bullet({}, 0.6)"#, k * 90 % 360), 1);
                 }
-                app_runners[i]
-                    .log
-                    .assert_log(r#"Wait(Expr { rpn: [Number(5.0)] })"#, 1);
+                logs[i].assert_log(r#"Wait(Expr { rpn: [Number(5.0)] })"#, 1);
                 for k in 0..5 {
-                    app_runners[i]
-                        .log
-                        .assert_log(&format!(r#"=== {}"#, j * 5 + k + 2), 1);
+                    logs[i].assert_log(&format!(r#"=== {}"#, j * 5 + k + 2), 1);
                 }
             }
-            app_runners[i].log.assert_log(r#"Vanish"#, 1);
-            app_runners[i].log.assert_log(&format!(r#"=== {}"#, 62), 1);
-            app_runners[i].assert_final_turn(62);
+            logs[i].assert_log(r#"Vanish"#, 1);
+            logs[i].assert_log(&format!(r#"=== {}"#, 62), 1);
         }
 
         let v1s = [75, 70, 65, 60, 55, 50, 80, 75, 70, 65, 60, 55];
         let v2_factors = [0, 0, 0, 0, 0, 0, 15, 10, 6, 3, 1, 0];
         for i in 3..99 {
-            app_runners[i]
-                .log
-                .assert_log(&format!(r#"=== {}"#, (i - 3) / 8 * 5 + 2), 1);
-            for _ in 0..1 {
-                app_runners[i].log.assert_log(r#"Action(None)"#, 1);
-                app_runners[i]
-                    .log
-                    .assert_log(r#"Wait(Expr { rpn: [Var("v1")] })"#, 1);
+            logs[i].assert_log(&format!(r#"=== {}"#, (i - 3) / 8 * 5 + 2), 1);
+            let mut spd = 1.6;
+            for j in 0..1 {
+                logs[i].assert_log(r#"Action(None)"#, 1);
+                logs[i].assert_log(r#"Wait(Expr { rpn: [Var("v1")] })"#, 1);
                 for k in 0..v1s[(i - 3) / 8 % 12] {
-                    app_runners[i]
-                        .log
-                        .assert_log(&format!(r#"=== {}"#, (i - 3) / 8 * 5 + k + 3), 1);
+                    logs[i].assert_log(&format!(r#"=== {}"#, (i - 3) / 8 * 5 + k + 3), 1);
                 }
-                app_runners[i].log.assert_log(r#"Fire(None)"#, 1);
-                app_runners[i].log.assert_log(r#"Bullet(None)"#, 1);
-                app_runners[i].log.assert_log(r#"Repeat"#, 1);
+                logs[i].assert_log(r#"Fire(None)"#, 1);
+                logs[i].assert_log(r#"Bullet(None)"#, 1);
+                let mut dir = v2_factors[j + (i - 3) / 8] * (((i - 3) % 8 / 4) as isize * -2 + 1);
+                if dir > 360 {
+                    dir -= 360;
+                }
+                if dir < 0 {
+                    dir += 360;
+                }
+                logs[i].assert_log(&format!(r#"create_simple_bullet({}, {})"#, dir, spd), 1);
+                logs[i].assert_log(r#"Repeat"#, 1);
                 for _ in 0..7 {
-                    app_runners[i].log.assert_log(r#"Action(None)"#, 1);
-                    app_runners[i].log.assert_log(r#"Fire(None)"#, 1);
-                    app_runners[i].log.assert_log(r#"Bullet(None)"#, 1);
+                    logs[i].assert_log(r#"Action(None)"#, 1);
+                    logs[i].assert_log(r#"Fire(None)"#, 1);
+                    logs[i].assert_log(r#"Bullet(None)"#, 1);
+                    spd += 0.1;
+                    logs[i].assert_log(&format!(r#"create_simple_bullet({}, {})"#, dir, spd), 1);
                 }
-                app_runners[i].log.assert_log(r#"Vanish"#, 1);
+                logs[i].assert_log(r#"Vanish"#, 1);
             }
-            app_runners[i].log.assert_log(
+            logs[i].assert_log(
                 &format!(r#"=== {}"#, (i - 3) / 8 * 5 + v1s[(i - 3) / 8 % 12] + 3),
                 1,
             );
-            app_runners[i].assert_final_turn((2 + v1s[(i - 3) / 8 % 12]) as u32);
-        }
-        main_log.assert_log(r#"[0] create_bullet(30, 2)"#, 1);
-        main_log.assert_log(r#"[0] create_bullet(330, 2)"#, 1);
-        for i in 0..12 {
-            for j in 0..8 {
-                main_log.assert_log(
-                    &format!(r#"[{}] create_bullet({}, 0.6)"#, 5 * i + 1, j * 90 % 360),
-                    1,
-                );
-            }
-        }
-        for i in 0..2 {
-            for j in 0..48 {
-                let mut spd = 1.6;
-                for _ in 0..8 {
-                    let mut dir = v2_factors[j / 8 + 6 * i] * (j as isize / 4 % 2 * -2 + 1);
-                    if dir > 360 {
-                        dir -= 360;
-                    }
-                    if dir < 0 {
-                        dir += 360;
-                    }
-                    main_log.assert_log(
-                        &format!(
-                            r#"[{}] create_simple_bullet({}, {})"#,
-                            35 * i + 77,
-                            dir,
-                            spd
-                        ),
-                        1,
-                    );
-                    spd += 0.1;
-                }
-            }
         }
     }
 
@@ -1519,33 +1462,40 @@ mod test_runner {
         )
         .unwrap();
         let mut manager = TestManager::new(bml);
-        let mut main_log = TestLog::new("main_log".to_string());
-        manager.run_test(100, &mut main_log);
-        let mut app_runners = manager.into_app_runners();
-        app_runners[0].log.assert_log(r#"=== 0"#, 1);
-        app_runners[0].log.assert_log(r#"Action(Some("top"))"#, 1);
-        app_runners[0].log.assert_log(r#"ChangeSpeed"#, 1);
-        app_runners[0]
-            .log
-            .assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
-        app_runners[0].log.assert_log(r#"=== 1"#, 1);
-        app_runners[0].log.assert_log(r#"ChangeSpeed"#, 1);
-        app_runners[0].log.assert_log(r#"Wait(Expr { rpn: [Number(60.0), Var("rank"), Number(50.0), Binary(Times), Binary(Minus)] })"#, 1);
-        app_runners[0].log.assert_log(r#"=== 2"#, 1);
-        app_runners[0].log.assert_log(r#"=== 3"#, 1);
-        app_runners[0].log.assert_log(r#"=== 4"#, 1);
-        app_runners[0].log.assert_log(r#"=== 5"#, 1);
-        app_runners[0].log.assert_log(r#"=== 6"#, 1);
-        app_runners[0].log.assert_log(r#"=== 7"#, 1);
-        app_runners[0].log.assert_log(r#"=== 8"#, 1);
-        app_runners[0].log.assert_log(r#"=== 9"#, 1);
-        app_runners[0].log.assert_log(r#"=== 10"#, 1);
-        app_runners[0].log.assert_log(r#"=== 11"#, 1);
-        app_runners[0].log.assert_log(r#"Fire(None)"#, 1);
-        app_runners[0].log.assert_log(r#"Bullet(None)"#, 1);
-        app_runners[0].log.assert_log(r#"=== 12"#, 1);
-
-        main_log.assert_log(r#"[11] create_simple_bullet(0, 10)"#, 1);
+        let mut logs = Vec::new();
+        manager.run_test(100, &mut logs);
+        logs[0].assert_log(r#"=== 0"#, 1);
+        logs[0].assert_log(r#"Action(Some("top"))"#, 1);
+        logs[0].assert_log(r#"ChangeSpeed"#, 1);
+        logs[0].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[0].assert_log(r#"=== 1"#, 1);
+        logs[0].assert_log(r#"do_change_speed(0)"#, 1);
+        logs[0].assert_log(r#"ChangeSpeed"#, 1);
+        logs[0].assert_log(r#"Wait(Expr { rpn: [Number(60.0), Var("rank"), Number(50.0), Binary(Times), Binary(Minus)] })"#, 1);
+        logs[0].assert_log(r#"=== 2"#, 1);
+        logs[0].assert_log(r#"do_change_speed(1)"#, 1);
+        logs[0].assert_log(r#"=== 3"#, 1);
+        logs[0].assert_log(r#"do_change_speed(1)"#, 1);
+        logs[0].assert_log(r#"=== 4"#, 1);
+        logs[0].assert_log(r#"do_change_speed(1)"#, 1);
+        logs[0].assert_log(r#"=== 5"#, 1);
+        logs[0].assert_log(r#"do_change_speed(1)"#, 1);
+        logs[0].assert_log(r#"=== 6"#, 1);
+        logs[0].assert_log(r#"do_change_speed(1)"#, 1);
+        logs[0].assert_log(r#"=== 7"#, 1);
+        logs[0].assert_log(r#"do_change_speed(1)"#, 1);
+        logs[0].assert_log(r#"=== 8"#, 1);
+        logs[0].assert_log(r#"do_change_speed(1)"#, 1);
+        logs[0].assert_log(r#"=== 9"#, 1);
+        logs[0].assert_log(r#"do_change_speed(1)"#, 1);
+        logs[0].assert_log(r#"=== 10"#, 1);
+        logs[0].assert_log(r#"do_change_speed(1)"#, 1);
+        logs[0].assert_log(r#"=== 11"#, 1);
+        logs[0].assert_log(r#"do_change_speed(1)"#, 1);
+        logs[0].assert_log(r#"Fire(None)"#, 1);
+        logs[0].assert_log(r#"Bullet(None)"#, 1);
+        logs[0].assert_log(r#"create_simple_bullet(0, 10)"#, 1);
+        logs[0].assert_log(r#"=== 12"#, 1);
     }
 
     #[test]
@@ -1590,61 +1540,48 @@ mod test_runner {
         )
         .unwrap();
         let mut manager = TestManager::new(bml);
-        let mut main_log = TestLog::new("main_log".to_string());
-        manager.run_test(100, &mut main_log);
-        let mut app_runners = manager.into_app_runners();
-        app_runners[0].log.assert_log(r#"=== 0"#, 1);
-        app_runners[0].log.assert_log(r#"Action(Some("top"))"#, 1);
-        app_runners[0].log.assert_log(r#"Fire(None)"#, 1);
-        app_runners[0].log.assert_log(r#"BulletRef("accel")"#, 1);
-        app_runners[0].log.assert_log(r#"Bullet(Some("accel"))"#, 1);
-        app_runners[0].log.assert_log(r#"Repeat"#, 1);
-        app_runners[0].log.assert_log(r#"Action(None)"#, 1);
-        app_runners[0]
-            .log
-            .assert_log(r#"Wait(Expr { rpn: [Number(2.0)] })"#, 1);
-        app_runners[0].log.assert_log(r#"=== 1"#, 1);
-        app_runners[0].log.assert_log(r#"=== 2"#, 1);
-        app_runners[0].log.assert_log(r#"Fire(None)"#, 1);
-        app_runners[0].log.assert_log(r#"BulletRef("accel")"#, 1);
-        app_runners[0].log.assert_log(r#"Bullet(Some("accel"))"#, 1);
-        app_runners[0].log.assert_log(r#"Vanish"#, 1);
-        app_runners[0].log.assert_log(r#"=== 3"#, 1);
-        app_runners[0].assert_final_turn(4);
+        let mut logs = Vec::new();
+        manager.run_test(100, &mut logs);
+        logs[0].assert_log(r#"=== 0"#, 1);
+        logs[0].assert_log(r#"Action(Some("top"))"#, 1);
+        logs[0].assert_log(r#"Fire(None)"#, 1);
+        logs[0].assert_log(r#"BulletRef("accel")"#, 1);
+        logs[0].assert_log(r#"Bullet(Some("accel"))"#, 1);
+        logs[0].assert_log(r#"create_bullet(0, 0.09999999999999998)"#, 1);
+        logs[0].assert_log(r#"Repeat"#, 1);
+        logs[0].assert_log(r#"Action(None)"#, 1);
+        logs[0].assert_log(r#"Wait(Expr { rpn: [Number(2.0)] })"#, 1);
+        logs[0].assert_log(r#"=== 1"#, 1);
+        logs[0].assert_log(r#"=== 2"#, 1);
+        logs[0].assert_log(r#"Fire(None)"#, 1);
+        logs[0].assert_log(r#"BulletRef("accel")"#, 1);
+        logs[0].assert_log(r#"Bullet(Some("accel"))"#, 1);
+        logs[0].assert_log(r#"create_bullet(0, 0.39999999999999997)"#, 1);
+        logs[0].assert_log(r#"Vanish"#, 1);
+        logs[0].assert_log(r#"=== 3"#, 1);
 
-        app_runners[1].log.assert_log(r#"=== 1"#, 1);
-        app_runners[1].log.assert_log(r#"Action(None)"#, 1);
-        app_runners[1]
-            .log
-            .assert_log(r#"Wait(Expr { rpn: [Number(3.0)] })"#, 1);
-        app_runners[1].log.assert_log(r#"=== 2"#, 1);
-        app_runners[1].log.assert_log(r#"=== 3"#, 1);
-        app_runners[1].log.assert_log(r#"=== 4"#, 1);
-        app_runners[1].log.assert_log(r#"ChangeSpeed"#, 1);
+        logs[1].assert_log(r#"=== 1"#, 1);
+        logs[1].assert_log(r#"Action(None)"#, 1);
+        logs[1].assert_log(r#"Wait(Expr { rpn: [Number(3.0)] })"#, 1);
+        logs[1].assert_log(r#"=== 2"#, 1);
+        logs[1].assert_log(r#"=== 3"#, 1);
+        logs[1].assert_log(r#"=== 4"#, 1);
+        logs[1].assert_log(r#"ChangeSpeed"#, 1);
         for i in 0..60 {
-            app_runners[1]
-                .log
-                .assert_log(&format!(r#"=== {}"#, i + 5), 1);
+            logs[1].assert_log(&format!(r#"=== {}"#, i + 5), 1);
+            logs[1].assert_log(r#"do_change_speed(1)"#, 1);
         }
-        app_runners[1].assert_final_turn(64);
 
-        app_runners[2].log.assert_log(r#"=== 3"#, 1);
-        app_runners[2].log.assert_log(r#"Action(None)"#, 1);
-        app_runners[2]
-            .log
-            .assert_log(r#"Wait(Expr { rpn: [Number(3.0)] })"#, 1);
-        app_runners[2].log.assert_log(r#"=== 4"#, 1);
-        app_runners[2].log.assert_log(r#"=== 5"#, 1);
-        app_runners[2].log.assert_log(r#"=== 6"#, 1);
-        app_runners[2].log.assert_log(r#"ChangeSpeed"#, 1);
+        logs[2].assert_log(r#"=== 3"#, 1);
+        logs[2].assert_log(r#"Action(None)"#, 1);
+        logs[2].assert_log(r#"Wait(Expr { rpn: [Number(3.0)] })"#, 1);
+        logs[2].assert_log(r#"=== 4"#, 1);
+        logs[2].assert_log(r#"=== 5"#, 1);
+        logs[2].assert_log(r#"=== 6"#, 1);
+        logs[2].assert_log(r#"ChangeSpeed"#, 1);
         for i in 0..60 {
-            app_runners[2]
-                .log
-                .assert_log(&format!(r#"=== {}"#, i + 7), 1);
+            logs[2].assert_log(&format!(r#"=== {}"#, i + 7), 1);
+            logs[2].assert_log(r#"do_change_speed(1)"#, 1);
         }
-        app_runners[2].assert_final_turn(64);
-
-        main_log.assert_log(r#"[0] create_bullet(0, 0.09999999999999998)"#, 1);
-        main_log.assert_log(r#"[2] create_bullet(0, 0.39999999999999997)"#, 1);
     }
 }
