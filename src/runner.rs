@@ -718,9 +718,9 @@ impl RunnerImpl {
             {
                 let term = self.get_number_contents(term, data, runner) as u32;
                 let (dir, seq) = if let Some(DirectionType::Sequence) = dir_type {
-                    (self.get_number_contents(dir, data, runner), false)
+                    (self.get_number_contents(dir, data, runner), true)
                 } else {
-                    (self.get_direction(*dir_type, dir, data, runner), true)
+                    (self.get_direction(*dir_type, dir, data, runner), false)
                 };
                 self.calc_change_direction(dir, term, seq, data, runner);
             }
