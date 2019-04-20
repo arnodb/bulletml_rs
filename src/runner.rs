@@ -26,41 +26,71 @@ pub struct Runner<R> {
 
 impl<'a, R> Runner<R> {
     pub fn new(app_runner: R, bml: &BulletML) -> Self {
-        let bml_type = {
-            let root_node = &bml.arena[bml.root];
-            if let BulletMLNode::BulletML { bml_type } = root_node.data {
-                bml_type
-            } else {
-                None
-            }
-        };
-        let top_actions: Vec<NodeId> = bml
+        let bml_type = Self::get_bml_type(bml);
+        let runners = bml
             .root
             .children(&bml.arena)
             .filter(|child| {
                 let child_node = &bml.arena[*child];
                 child_node.data.is_top_action()
             })
+            .map(|action| {
+                let state = State {
+                    bml_type,
+                    nodes: Box::new([action]),
+                    parameters: Vec::new(),
+                };
+                RunnerImpl::new(state)
+            })
             .collect();
-        let mut runners = Vec::with_capacity(top_actions.len());
-        for action in top_actions {
-            let state = State {
-                bml_type,
-                nodes: Box::new([action]),
-                parameters: Vec::new(),
-            };
-            runners.push(RunnerImpl::new(state))
-        }
         Runner {
             runners,
             app_runner,
         }
     }
 
+    pub fn init<D>(&mut self, bml: &BulletML)
+    where
+        R: AppRunner<D>,
+    {
+        let bml_type = Self::get_bml_type(bml);
+        self.runners.clear();
+        for action in bml.root.children(&bml.arena).filter(|child| {
+            let child_node = &bml.arena[*child];
+            child_node.data.is_top_action()
+        }) {
+            let state = State {
+                bml_type,
+                nodes: Box::new([action]),
+                parameters: Vec::new(),
+            };
+            self.runners.push(RunnerImpl::new(state))
+        }
+        self.app_runner.init();
+    }
+
     pub fn new_from_state(app_runner: R, state: State) -> Self {
         Runner {
             runners: vec![RunnerImpl::new(state)],
             app_runner,
+        }
+    }
+
+    pub fn init_from_state<D>(&mut self, state: State)
+    where
+        R: AppRunner<D>,
+    {
+        self.runners.clear();
+        self.runners.push(RunnerImpl::new(state));
+        self.app_runner.init();
+    }
+
+    pub fn get_bml_type(bml: &BulletML) -> Option<BulletMLType> {
+        let root_node = &bml.arena[bml.root];
+        if let BulletMLNode::BulletML { bml_type } = root_node.data {
+            bml_type
+        } else {
+            None
         }
     }
 
@@ -83,6 +113,15 @@ impl<'a, R> Runner<R> {
     }
 }
 
+impl<R: Default> Default for Runner<R> {
+    fn default() -> Self {
+        Runner {
+            runners: Vec::default(),
+            app_runner: R::default(),
+        }
+    }
+}
+
 impl<R> Deref for Runner<R> {
     type Target = R;
     fn deref(&self) -> &Self::Target {
@@ -97,6 +136,7 @@ impl<R> DerefMut for Runner<R> {
 }
 
 pub trait AppRunner<D> {
+    fn init(&mut self) {}
     fn get_bullet_direction(&self, data: &D) -> f64;
     fn get_aim_direction(&self, &D) -> f64;
     fn get_bullet_speed(&self, &D) -> f64;
