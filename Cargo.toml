@@ -8,3 +8,6 @@ failure = "0.1"
 indextree = "3.0"
 meval = "0.2"
 roxmltree = "0.3"
+
+[dev-dependencies]
+matches = "0.1"

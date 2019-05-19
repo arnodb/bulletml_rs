@@ -1,50 +1,14 @@
-use failure::Backtrace;
+use errors::{ParseError, ParseErrorKind, ParseErrorPos};
+use failure::{Fail, ResultExt};
 use indextree::{Arena, NodeId};
 use meval::Expr;
+use roxmltree::TextPos;
 use std::collections::HashMap;
 use std::fs;
 use std::io::prelude::*;
 use std::path;
 
 use crate::tree::{BulletML, BulletMLNode, BulletMLType, DirectionType, HVType, SpeedType};
-
-#[derive(Fail, Debug)]
-pub enum Error {
-    #[fail(display = "Failure error")]
-    Failure(#[cause] failure::Error, Backtrace),
-    #[fail(display = "Xml error")]
-    Xml(#[cause] roxmltree::Error, Backtrace),
-    #[fail(display = "I/O error")]
-    InputOutput(#[cause] std::io::Error, Backtrace),
-    #[fail(display = "BulletML error")]
-    BulletML(String, Backtrace),
-    #[fail(display = "Expression error")]
-    Expression(meval::Error, Backtrace),
-}
-
-impl From<failure::Error> for Error {
-    fn from(inner: failure::Error) -> Self {
-        Error::Failure(inner, Backtrace::new())
-    }
-}
-
-impl From<roxmltree::Error> for Error {
-    fn from(inner: roxmltree::Error) -> Self {
-        Error::Xml(inner, Backtrace::new())
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(inner: std::io::Error) -> Self {
-        Error::InputOutput(inner, Backtrace::new())
-    }
-}
-
-impl From<meval::Error> for Error {
-    fn from(inner: meval::Error) -> Self {
-        Error::Expression(inner, Backtrace::new())
-    }
-}
 
 pub struct BulletMLParser {
     arena: Arena<BulletMLNode>,
@@ -54,8 +18,8 @@ pub struct BulletMLParser {
 }
 
 impl BulletMLParser {
-    pub fn parse(s: &str) -> Result<BulletML, Error> {
-        let doc = roxmltree::Document::parse(s)?;
+    pub fn parse(s: &str) -> Result<BulletML, ParseError> {
+        let doc = roxmltree::Document::parse(s).context(ParseErrorKind::Xml)?;
         let mut parser = BulletMLParser {
             arena: Arena::new(),
             bullet_refs: HashMap::new(),
@@ -75,21 +39,22 @@ impl BulletMLParser {
                     fire_refs: parser.fire_refs,
                 })
             }
-            _ => Err(Error::BulletML(
-                format!("Expected bulletml but got {}", root.tag_name().name()),
-                Backtrace::new(),
-            )),
+            name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                element: name.to_string(),
+                pos: BulletMLParser::node_pos(&root),
+            })),
         }
     }
 
-    pub fn parse_file(path: &path::Path) -> Result<BulletML, Error> {
-        let mut file = fs::File::open(&path)?;
+    pub fn parse_file(path: &path::Path) -> Result<BulletML, ParseError> {
+        let mut file = fs::File::open(&path).context(ParseErrorKind::FileOpen)?;
         let mut text = String::new();
-        file.read_to_string(&mut text)?;
+        file.read_to_string(&mut text)
+            .context(ParseErrorKind::FileRead)?;
         BulletMLParser::parse(&text)
     }
 
-    fn parse_bulletml(&mut self, bulletml: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_bulletml(&mut self, bulletml: roxmltree::Node) -> Result<NodeId, ParseError> {
         let type_att = bulletml.attribute("type");
         let id = match type_att {
             Some(type_att) => match type_att {
@@ -102,10 +67,10 @@ impl BulletMLParser {
                 "horizontal" => self.arena.new_node(BulletMLNode::BulletML {
                     bml_type: Some(BulletMLType::Horizontal),
                 }),
-                _ => Err(Error::BulletML(
-                    format!("Unrecognized type {}", type_att),
-                    Backtrace::new(),
-                ))?,
+                _ => Err(ParseErrorKind::UnrecognizedBmlType {
+                    bml_type: type_att.to_string(),
+                    pos: BulletMLParser::attribute_value_pos(&bulletml, "type"),
+                })?,
             },
             None => self
                 .arena
@@ -117,17 +82,18 @@ impl BulletMLParser {
                 "bullet" => self.parse_bullet(child)?,
                 "action" => self.parse_action(child)?,
                 "fire" => self.parse_fire(child)?,
-                name => Err(Error::BulletML(
-                    format!("Expected bullet or action or fire but got {}", name),
-                    Backtrace::new(),
-                ))?,
+                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                    element: name.to_string(),
+                    pos: BulletMLParser::node_pos(&child),
+                }))?,
             };
-            id.append(child_id, &mut self.arena)?;
+            id.append(child_id, &mut self.arena)
+                .context(ParseErrorKind::Internal)?;
         }
         Ok(id)
     }
 
-    fn parse_bullet(&mut self, bullet: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_bullet(&mut self, bullet: roxmltree::Node) -> Result<NodeId, ParseError> {
         let label = bullet.attribute("label");
         let id = if let Some(label) = label {
             let id = self
@@ -145,20 +111,18 @@ impl BulletMLParser {
                 "speed" => self.parse_speed(child)?,
                 "action" => self.parse_action(child)?,
                 "actionRef" => self.parse_action_ref(child)?,
-                name => Err(Error::BulletML(
-                    format!(
-                        "Expected direction or speed or action or actionRef but got {}",
-                        name
-                    ),
-                    Backtrace::new(),
-                ))?,
+                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                    element: name.to_string(),
+                    pos: BulletMLParser::node_pos(&child),
+                }))?,
             };
-            id.append(child_id, &mut self.arena)?;
+            id.append(child_id, &mut self.arena)
+                .context(ParseErrorKind::Internal)?;
         }
         Ok(id)
     }
 
-    fn parse_action(&mut self, action: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_action(&mut self, action: roxmltree::Node) -> Result<NodeId, ParseError> {
         let label = action.attribute("label");
         let id = if let Some(label) = label {
             let id = self
@@ -182,20 +146,18 @@ impl BulletMLParser {
                 "vanish" => self.parse_vanish(child)?,
                 "action" => self.parse_action(child)?,
                 "actionRef" => self.parse_action_ref(child)?,
-                name => Err(Error::BulletML(
-                    format!(
-                        "Expected repeat or fire or fireRef or changeSpeed or changeDirection or accel or wait or vanish or action or actionRef but got {}",
-                        name
-                    ),
-                    Backtrace::new(),
-                ))?,
+                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                    element: name.to_string(),
+                    pos: BulletMLParser::node_pos(&child),
+                }))?,
             };
-            id.append(child_id, &mut self.arena)?;
+            id.append(child_id, &mut self.arena)
+                .context(ParseErrorKind::Internal)?;
         }
         Ok(id)
     }
 
-    fn parse_fire(&mut self, fire: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_fire(&mut self, fire: roxmltree::Node) -> Result<NodeId, ParseError> {
         let label = fire.attribute("label");
         let id = if let Some(label) = label {
             let id = self
@@ -213,15 +175,13 @@ impl BulletMLParser {
                 "speed" => self.parse_speed(child)?,
                 "bullet" => self.parse_bullet(child)?,
                 "bulletRef" => self.parse_bullet_ref(child)?,
-                name => Err(Error::BulletML(
-                    format!(
-                        "Expected direction or speed or bullet or bulletRef but got {}",
-                        name
-                    ),
-                    Backtrace::new(),
-                ))?,
+                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                    element: name.to_string(),
+                    pos: BulletMLParser::node_pos(&child),
+                }))?,
             };
-            id.append(child_id, &mut self.arena)?;
+            id.append(child_id, &mut self.arena)
+                .context(ParseErrorKind::Internal)?;
         }
         Ok(id)
     }
@@ -229,41 +189,43 @@ impl BulletMLParser {
     fn parse_change_direction(
         &mut self,
         change_direction: roxmltree::Node,
-    ) -> Result<NodeId, Error> {
+    ) -> Result<NodeId, ParseError> {
         let id = self.arena.new_node(BulletMLNode::ChangeDirection);
         for child in change_direction.children().filter(|n| n.is_element()) {
             let child_name = child.tag_name();
             let child_id = match child_name.name() {
                 "direction" => self.parse_direction(child)?,
                 "term" => self.parse_term(child)?,
-                name => Err(Error::BulletML(
-                    format!("Expected direction or term but got {}", name),
-                    Backtrace::new(),
-                ))?,
+                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                    element: name.to_string(),
+                    pos: BulletMLParser::node_pos(&child),
+                }))?,
             };
-            id.append(child_id, &mut self.arena)?;
+            id.append(child_id, &mut self.arena)
+                .context(ParseErrorKind::Internal)?;
         }
         Ok(id)
     }
 
-    fn parse_change_speed(&mut self, change_speed: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_change_speed(&mut self, change_speed: roxmltree::Node) -> Result<NodeId, ParseError> {
         let id = self.arena.new_node(BulletMLNode::ChangeSpeed);
         for child in change_speed.children().filter(|n| n.is_element()) {
             let child_name = child.tag_name();
             let child_id = match child_name.name() {
                 "speed" => self.parse_speed(child)?,
                 "term" => self.parse_term(child)?,
-                name => Err(Error::BulletML(
-                    format!("Expected speed or term but got {}", name),
-                    Backtrace::new(),
-                ))?,
+                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                    element: name.to_string(),
+                    pos: BulletMLParser::node_pos(&child),
+                }))?,
             };
-            id.append(child_id, &mut self.arena)?;
+            id.append(child_id, &mut self.arena)
+                .context(ParseErrorKind::Internal)?;
         }
         Ok(id)
     }
 
-    fn parse_accel(&mut self, accel: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_accel(&mut self, accel: roxmltree::Node) -> Result<NodeId, ParseError> {
         let id = self.arena.new_node(BulletMLNode::Accel);
         for child in accel.children().filter(|n| n.is_element()) {
             let child_name = child.tag_name();
@@ -271,28 +233,29 @@ impl BulletMLParser {
                 "horizontal" => self.parse_horizontal(child)?,
                 "vertical" => self.parse_vertical(child)?,
                 "term" => self.parse_term(child)?,
-                name => Err(Error::BulletML(
-                    format!("Expected horizontal or vertical or term but got {}", name),
-                    Backtrace::new(),
-                ))?,
+                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                    element: name.to_string(),
+                    pos: BulletMLParser::node_pos(&child),
+                }))?,
             };
-            id.append(child_id, &mut self.arena)?;
+            id.append(child_id, &mut self.arena)
+                .context(ParseErrorKind::Internal)?;
         }
         Ok(id)
     }
 
-    fn parse_wait(&mut self, wait: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_wait(&mut self, wait: roxmltree::Node) -> Result<NodeId, ParseError> {
         let expr = self.parse_expression(wait)?;
         let id = self.arena.new_node(BulletMLNode::Wait(expr));
         Ok(id)
     }
 
-    fn parse_vanish(&mut self, _vanish: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_vanish(&mut self, _vanish: roxmltree::Node) -> Result<NodeId, ParseError> {
         let id = self.arena.new_node(BulletMLNode::Vanish);
         Ok(id)
     }
 
-    fn parse_repeat(&mut self, repeat: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_repeat(&mut self, repeat: roxmltree::Node) -> Result<NodeId, ParseError> {
         let id = self.arena.new_node(BulletMLNode::Repeat);
         for child in repeat.children().filter(|n| n.is_element()) {
             let child_name = child.tag_name();
@@ -300,17 +263,18 @@ impl BulletMLParser {
                 "times" => self.parse_times(child)?,
                 "action" => self.parse_action(child)?,
                 "actionRef" => self.parse_action_ref(child)?,
-                name => Err(Error::BulletML(
-                    format!("Expected times or action or actionRef but got {}", name),
-                    Backtrace::new(),
-                ))?,
+                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                    element: name.to_string(),
+                    pos: BulletMLParser::node_pos(&child),
+                }))?,
             };
-            id.append(child_id, &mut self.arena)?;
+            id.append(child_id, &mut self.arena)
+                .context(ParseErrorKind::Internal)?;
         }
         Ok(id)
     }
 
-    fn parse_direction(&mut self, direction: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_direction(&mut self, direction: roxmltree::Node) -> Result<NodeId, ParseError> {
         let type_att = direction.attribute("type");
         let expr = self.parse_expression(direction)?;
         let id = match type_att {
@@ -331,10 +295,10 @@ impl BulletMLParser {
                     dir_type: Some(DirectionType::Sequence),
                     dir: expr,
                 }),
-                _ => Err(Error::BulletML(
-                    format!("Unrecognized type {}", type_att),
-                    Backtrace::new(),
-                ))?,
+                _ => Err(ParseErrorKind::UnrecognizedDirectionType {
+                    dir_type: type_att.to_string(),
+                    pos: BulletMLParser::attribute_value_pos(&direction, "type"),
+                })?,
             },
             None => self.arena.new_node(BulletMLNode::Direction {
                 dir_type: None,
@@ -344,7 +308,7 @@ impl BulletMLParser {
         Ok(id)
     }
 
-    fn parse_speed(&mut self, speed: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_speed(&mut self, speed: roxmltree::Node) -> Result<NodeId, ParseError> {
         let type_att = speed.attribute("type");
         let expr = self.parse_expression(speed)?;
         let id = match type_att {
@@ -361,10 +325,10 @@ impl BulletMLParser {
                     spd_type: Some(SpeedType::Sequence),
                     spd: expr,
                 }),
-                _ => Err(Error::BulletML(
-                    format!("Unrecognized type {}", type_att),
-                    Backtrace::new(),
-                ))?,
+                _ => Err(ParseErrorKind::UnrecognizedSpeedType {
+                    speed_type: type_att.to_string(),
+                    pos: BulletMLParser::attribute_value_pos(&speed, "type"),
+                })?,
             },
             None => self.arena.new_node(BulletMLNode::Speed {
                 spd_type: None,
@@ -374,7 +338,7 @@ impl BulletMLParser {
         Ok(id)
     }
 
-    fn parse_horizontal(&mut self, horizontal: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_horizontal(&mut self, horizontal: roxmltree::Node) -> Result<NodeId, ParseError> {
         let type_att = horizontal.attribute("type");
         let expr = self.parse_expression(horizontal)?;
         let id = match type_att {
@@ -391,10 +355,10 @@ impl BulletMLParser {
                     h_type: HVType::Sequence,
                     h: expr,
                 }),
-                _ => Err(Error::BulletML(
-                    format!("Unrecognized type {}", type_att),
-                    Backtrace::new(),
-                ))?,
+                _ => Err(ParseErrorKind::UnrecognizedAccelDirType {
+                    accel_dir_type: type_att.to_string(),
+                    pos: BulletMLParser::attribute_value_pos(&horizontal, "type"),
+                })?,
             },
             None => self.arena.new_node(BulletMLNode::Horizontal {
                 h_type: HVType::Absolute,
@@ -404,7 +368,7 @@ impl BulletMLParser {
         Ok(id)
     }
 
-    fn parse_vertical(&mut self, vertical: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_vertical(&mut self, vertical: roxmltree::Node) -> Result<NodeId, ParseError> {
         let type_att = vertical.attribute("type");
         let expr = self.parse_expression(vertical)?;
         let id = match type_att {
@@ -421,10 +385,10 @@ impl BulletMLParser {
                     v_type: HVType::Sequence,
                     v: expr,
                 }),
-                _ => Err(Error::BulletML(
-                    format!("Unrecognized type {}", type_att),
-                    Backtrace::new(),
-                ))?,
+                _ => Err(ParseErrorKind::UnrecognizedAccelDirType {
+                    accel_dir_type: type_att.to_string(),
+                    pos: BulletMLParser::attribute_value_pos(&vertical, "type"),
+                })?,
             },
             None => self.arena.new_node(BulletMLNode::Vertical {
                 v_type: HVType::Absolute,
@@ -434,27 +398,28 @@ impl BulletMLParser {
         Ok(id)
     }
 
-    fn parse_term(&mut self, term: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_term(&mut self, term: roxmltree::Node) -> Result<NodeId, ParseError> {
         let expr = self.parse_expression(term)?;
         let id = self.arena.new_node(BulletMLNode::Term(expr));
         Ok(id)
     }
 
-    fn parse_times(&mut self, times: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_times(&mut self, times: roxmltree::Node) -> Result<NodeId, ParseError> {
         let expr = self.parse_expression(times)?;
         let id = self.arena.new_node(BulletMLNode::Times(expr));
         Ok(id)
     }
 
-    fn parse_bullet_ref(&mut self, bullet_ref: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_bullet_ref(&mut self, bullet_ref: roxmltree::Node) -> Result<NodeId, ParseError> {
         let label = bullet_ref.attribute("label");
         let label = if let Some(label) = label {
             label
         } else {
-            return Err(Error::BulletML(
-                "missing label".to_string(),
-                Backtrace::new(),
-            ));
+            Err(ParseError::from(ParseErrorKind::MissingAttribute {
+                attribute: "label".to_string(),
+                element: bullet_ref.tag_name().name().to_string(),
+                pos: BulletMLParser::node_pos(&bullet_ref),
+            }))?
         };
         let id = self
             .arena
@@ -463,25 +428,27 @@ impl BulletMLParser {
             let child_name = child.tag_name();
             let child_id = match child_name.name() {
                 "param" => self.parse_param(child)?,
-                name => Err(Error::BulletML(
-                    format!("Expected param but got {}", name),
-                    Backtrace::new(),
-                ))?,
+                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                    element: name.to_string(),
+                    pos: BulletMLParser::node_pos(&child),
+                }))?,
             };
-            id.append(child_id, &mut self.arena)?;
+            id.append(child_id, &mut self.arena)
+                .context(ParseErrorKind::Internal)?;
         }
         Ok(id)
     }
 
-    fn parse_action_ref(&mut self, action_ref: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_action_ref(&mut self, action_ref: roxmltree::Node) -> Result<NodeId, ParseError> {
         let label = action_ref.attribute("label");
         let label = if let Some(label) = label {
             label
         } else {
-            return Err(Error::BulletML(
-                "missing label".to_string(),
-                Backtrace::new(),
-            ));
+            Err(ParseError::from(ParseErrorKind::MissingAttribute {
+                attribute: "label".to_string(),
+                element: action_ref.tag_name().name().to_string(),
+                pos: BulletMLParser::node_pos(&action_ref),
+            }))?
         };
         let id = self
             .arena
@@ -490,25 +457,27 @@ impl BulletMLParser {
             let child_name = child.tag_name();
             let child_id = match child_name.name() {
                 "param" => self.parse_param(child)?,
-                name => Err(Error::BulletML(
-                    format!("Expected param but got {}", name),
-                    Backtrace::new(),
-                ))?,
+                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                    element: name.to_string(),
+                    pos: BulletMLParser::node_pos(&child),
+                }))?,
             };
-            id.append(child_id, &mut self.arena)?;
+            id.append(child_id, &mut self.arena)
+                .context(ParseErrorKind::Internal)?;
         }
         Ok(id)
     }
 
-    fn parse_fire_ref(&mut self, fire_ref: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_fire_ref(&mut self, fire_ref: roxmltree::Node) -> Result<NodeId, ParseError> {
         let label = fire_ref.attribute("label");
         let label = if let Some(label) = label {
             label
         } else {
-            return Err(Error::BulletML(
-                "missing label".to_string(),
-                Backtrace::new(),
-            ));
+            Err(ParseError::from(ParseErrorKind::MissingAttribute {
+                attribute: "label".to_string(),
+                element: fire_ref.tag_name().name().to_string(),
+                pos: BulletMLParser::node_pos(&fire_ref),
+            }))?
         };
         let id = self
             .arena
@@ -517,23 +486,24 @@ impl BulletMLParser {
             let child_name = child.tag_name();
             let child_id = match child_name.name() {
                 "param" => self.parse_param(child)?,
-                name => Err(Error::BulletML(
-                    format!("Expected param but got {}", name),
-                    Backtrace::new(),
-                ))?,
+                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                    element: name.to_string(),
+                    pos: BulletMLParser::node_pos(&child),
+                }))?,
             };
-            id.append(child_id, &mut self.arena)?;
+            id.append(child_id, &mut self.arena)
+                .context(ParseErrorKind::Internal)?;
         }
         Ok(id)
     }
 
-    fn parse_param(&mut self, param: roxmltree::Node) -> Result<NodeId, Error> {
+    fn parse_param(&mut self, param: roxmltree::Node) -> Result<NodeId, ParseError> {
         let expr = self.parse_expression(param)?;
         let id = self.arena.new_node(BulletMLNode::Param(expr));
         Ok(id)
     }
 
-    fn parse_expression(&self, parent: roxmltree::Node) -> Result<Expr, Error> {
+    fn parse_expression(&self, parent: roxmltree::Node) -> Result<Expr, ParseError> {
         let mut str: String = String::new();
         for child in parent.children() {
             let node_type = child.node_type();
@@ -541,16 +511,593 @@ impl BulletMLParser {
                 roxmltree::NodeType::Text => {
                     str.push_str(child.text().unwrap());
                 }
-                roxmltree::NodeType::Root | roxmltree::NodeType::Element => Err(Error::BulletML(
-                    format!("Expected Text but got {:?}", node_type),
-                    Backtrace::new(),
-                ))?,
+                roxmltree::NodeType::Root | roxmltree::NodeType::Element => {
+                    Err(ParseError::from(ParseErrorKind::UnexpectedNodeType {
+                        node_type: format!("{:?}", node_type),
+                        pos: BulletMLParser::node_pos(&child),
+                    }))?
+                }
                 roxmltree::NodeType::Comment | roxmltree::NodeType::PI => {}
             }
         }
         str = str.replace("$rand", "rand(0)");
         str = str.replace("$rank", "rank");
         str = str.replace("$", "v");
-        Ok(str.parse()?)
+        let expr = str.parse::<Expr>().map_err(|err| {
+            ParseError::from(err.context(ParseErrorKind::Expression {
+                pos: BulletMLParser::node_pos(parent.first_child().as_ref().unwrap_or(&parent)),
+            }))
+        })?;
+        Ok(expr)
     }
+
+    #[inline]
+    fn node_pos(node: &roxmltree::Node) -> ParseErrorPos {
+        node.node_pos().into()
+    }
+
+    #[inline]
+    fn attribute_value_pos(node: &roxmltree::Node, name: &str) -> ParseErrorPos {
+        node.attribute_value_pos(name)
+            .unwrap_or_else(|| TextPos { row: 0, col: 0 })
+            .into()
+    }
+}
+
+#[test]
+fn test_bulletml() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml />"##,
+    )
+    .unwrap();
+    assert_matches!(
+        &bml.arena[bml.root].data,
+        &BulletMLNode::BulletML { bml_type: None }
+    );
+}
+
+#[test]
+fn test_bulletml_type_none() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml type="none" />"##,
+    )
+    .unwrap();
+    assert_matches!(
+        &bml.arena[bml.root].data,
+        &BulletMLNode::BulletML { bml_type: None }
+    );
+}
+
+#[test]
+fn test_bulletml_type_vertical() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml type="vertical" />"##,
+    )
+    .unwrap();
+    assert_matches!(
+        &bml.arena[bml.root].data,
+        &BulletMLNode::BulletML {
+            bml_type: Some(BulletMLType::Vertical)
+        }
+    );
+}
+
+#[test]
+fn test_bulletml_type_horizontal() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml type="horizontal" />"##,
+    )
+    .unwrap();
+    assert_matches!(
+        &bml.arena[bml.root].data,
+        &BulletMLNode::BulletML {
+            bml_type: Some(BulletMLType::Horizontal)
+        }
+    );
+}
+
+#[test]
+fn test_full_bulletml() {
+    // This covers all the good branches of the parser.
+    BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <bullet label="b1">
+        <direction>0</direction>
+        <direction type="aim">0</direction>
+        <direction type="absolute">0</direction>
+        <direction type="relative">0</direction>
+        <direction type="sequence">0</direction>
+        <speed>0</speed>
+        <speed type="absolute">0</speed>
+        <speed type="relative">0</speed>
+        <speed type="sequence">0</speed>
+        <action label="a1">
+            <repeat>
+                <times>0</times>
+                <action />
+                <actionRef label="a1">
+                    <param>0</param>
+                </actionRef>
+            </repeat>
+            <fire label="f1">
+                <direction>0</direction>
+                <speed>0</speed>
+                <bullet />
+                <bulletRef label="b1">
+                    <param>0</param>
+                </bulletRef>
+            </fire>
+            <fireRef label="f1">
+                <param>0</param>
+            </fireRef>
+            <changeSpeed>
+                <speed>0</speed>
+                <term>0</term>
+            </changeSpeed>
+            <changeDirection>
+                <direction>0</direction>
+                <term>0</term>
+            </changeDirection>
+            <accel>
+                <horizontal>0</horizontal>
+                <horizontal type="absolute">0</horizontal>
+                <horizontal type="relative">0</horizontal>
+                <horizontal type="sequence">0</horizontal>
+                <vertical>0</vertical>
+                <vertical type="absolute">0</vertical>
+                <vertical type="relative">0</vertical>
+                <vertical type="sequence">0</vertical>
+                <term>0</term>
+            </accel>
+            <wait>0</wait>
+            <vanish />
+            <action />
+            <actionRef label="a1" />
+        </action>
+        <actionRef label="a1" />
+    </bullet>
+</bulletml>"##,
+    )
+    .unwrap();
+}
+
+#[test]
+fn test_unexpected_root() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<foo />"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnexpectedElement {
+            element: "foo".to_string(),
+            pos: ParseErrorPos { row: 2, col: 1 }
+        }
+    );
+}
+
+#[test]
+fn test_unrecognized_bml_type() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml type="foo" />"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnrecognizedBmlType {
+            bml_type: "foo".to_string(),
+            pos: ParseErrorPos { row: 2, col: 17 }
+        }
+    );
+}
+
+#[test]
+fn test_unexpected_bulletml_child() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <foo />
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnexpectedElement {
+            element: "foo".to_string(),
+            pos: ParseErrorPos { row: 3, col: 5 }
+        }
+    );
+}
+
+#[test]
+fn test_unexpected_bullet_child() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <bullet>
+        <foo />
+    </bullet>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnexpectedElement {
+            element: "foo".to_string(),
+            pos: ParseErrorPos { row: 4, col: 9 }
+        }
+    );
+}
+
+#[test]
+fn test_unexpected_action_child() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <action>
+        <foo />
+    </action>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnexpectedElement {
+            element: "foo".to_string(),
+            pos: ParseErrorPos { row: 4, col: 9 }
+        }
+    );
+}
+
+#[test]
+fn test_unexpected_fire_child() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <fire>
+        <foo />
+    </fire>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnexpectedElement {
+            element: "foo".to_string(),
+            pos: ParseErrorPos { row: 4, col: 9 }
+        }
+    );
+}
+
+#[test]
+fn test_unexpected_change_direction_child() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <action>
+        <changeDirection>
+            <foo />
+        </changeDirection>
+    </action>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnexpectedElement {
+            element: "foo".to_string(),
+            pos: ParseErrorPos { row: 5, col: 13 }
+        }
+    );
+}
+
+#[test]
+fn test_unexpected_change_speed_child() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <action>
+        <changeSpeed>
+            <foo />
+        </changeSpeed>
+    </action>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnexpectedElement {
+            element: "foo".to_string(),
+            pos: ParseErrorPos { row: 5, col: 13 }
+        }
+    );
+}
+
+#[test]
+fn test_unexpected_accel_child() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <action>
+        <accel>
+            <foo />
+        </accel>
+    </action>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnexpectedElement {
+            element: "foo".to_string(),
+            pos: ParseErrorPos { row: 5, col: 13 }
+        }
+    );
+}
+
+#[test]
+fn test_unexpected_repeat_child() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <action>
+        <repeat>
+            <foo />
+        </repeat>
+    </action>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnexpectedElement {
+            element: "foo".to_string(),
+            pos: ParseErrorPos { row: 5, col: 13 }
+        }
+    );
+}
+
+#[test]
+fn test_unrecognized_direction_type() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <bullet>
+        <direction type="foo">0</direction>
+    </bullet>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnrecognizedDirectionType {
+            dir_type: "foo".to_string(),
+            pos: ParseErrorPos { row: 4, col: 26 }
+        }
+    );
+}
+
+#[test]
+fn test_unrecognized_speed_type() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <bullet>
+        <speed type="foo">0</speed>
+    </bullet>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnrecognizedSpeedType {
+            speed_type: "foo".to_string(),
+            pos: ParseErrorPos { row: 4, col: 22 }
+        }
+    );
+}
+
+#[test]
+fn test_unrecognized_accel_horizontal_type() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <action>
+        <accel>
+            <horizontal type="foo">0</horizontal>
+        </accel>
+    </action>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnrecognizedAccelDirType {
+            accel_dir_type: "foo".to_string(),
+            pos: ParseErrorPos { row: 5, col: 31 }
+        }
+    );
+}
+
+#[test]
+fn test_unrecognized_accel_vertical_type() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <action>
+        <accel>
+            <vertical type="foo">0</vertical>
+        </accel>
+    </action>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnrecognizedAccelDirType {
+            accel_dir_type: "foo".to_string(),
+            pos: ParseErrorPos { row: 5, col: 29 }
+        }
+    );
+}
+
+#[test]
+fn test_missing_bullet_ref_label() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <fire>
+        <bulletRef />
+    </fire>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::MissingAttribute {
+            attribute: "label".to_string(),
+            element: "bulletRef".to_string(),
+            pos: ParseErrorPos { row: 4, col: 9 }
+        }
+    );
+}
+
+#[test]
+fn test_unexpected_bullet_ref_child() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <fire>
+        <bulletRef label="bar">
+            <foo />
+        </bulletRef>
+    </fire>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnexpectedElement {
+            element: "foo".to_string(),
+            pos: ParseErrorPos { row: 5, col: 13 }
+        }
+    );
+}
+
+#[test]
+fn test_missing_action_ref_label() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <bullet>
+        <actionRef />
+    </bullet>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::MissingAttribute {
+            attribute: "label".to_string(),
+            element: "actionRef".to_string(),
+            pos: ParseErrorPos { row: 4, col: 9 }
+        }
+    );
+}
+
+#[test]
+fn test_unexpected_action_ref_child() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <bullet>
+        <actionRef label="bar">
+            <foo />
+        </actionRef>
+    </bullet>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnexpectedElement {
+            element: "foo".to_string(),
+            pos: ParseErrorPos { row: 5, col: 13 }
+        }
+    );
+}
+
+#[test]
+fn test_missing_fire_ref_label() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <action>
+        <fireRef />
+    </action>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::MissingAttribute {
+            attribute: "label".to_string(),
+            element: "fireRef".to_string(),
+            pos: ParseErrorPos { row: 4, col: 9 }
+        }
+    );
+}
+
+#[test]
+fn test_unexpected_fire_ref_child() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <action>
+        <fireRef label="bar">
+            <foo />
+        </fireRef>
+    </action>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnexpectedElement {
+            element: "foo".to_string(),
+            pos: ParseErrorPos { row: 5, col: 13 }
+        }
+    );
+}
+
+#[test]
+fn test_unexpected_node_type_in_expression() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <bullet>
+        <direction><foo /></direction>
+    </bullet>
+</bulletml>"##,
+    );
+    assert_eq!(
+        bml.unwrap_err().kind(),
+        &ParseErrorKind::UnexpectedNodeType {
+            node_type: "Element".to_string(),
+            pos: ParseErrorPos { row: 4, col: 20 }
+        }
+    );
+}
+
+#[test]
+fn test_expression_error() {
+    let bml = BulletMLParser::parse(
+        r##"<?xml version="1.0" ?>
+<bulletml>
+    <bullet>
+        <direction>-</direction>
+    </bullet>
+</bulletml>"##,
+    );
+    let err = bml.unwrap_err();
+    assert_eq!(
+        err.kind(),
+        &ParseErrorKind::Expression {
+            pos: ParseErrorPos { row: 4, col: 20 }
+        }
+    );
+    let cause = err.cause().unwrap().downcast_ref::<meval::Error>();
+    assert_eq!(
+        cause,
+        Some(&meval::Error::ParseError(
+            meval::ParseError::MissingArgument
+        ))
+    );
 }
