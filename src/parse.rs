@@ -276,125 +276,78 @@ impl BulletMLParser {
 
     fn parse_direction(&mut self, direction: roxmltree::Node) -> Result<NodeId, ParseError> {
         let type_att = direction.attribute("type");
-        let expr = self.parse_expression(direction)?;
-        let id = match type_att {
-            Some(type_att) => match type_att {
-                "aim" => self.arena.new_node(BulletMLNode::Direction {
-                    dir_type: Some(DirectionType::Aim),
-                    dir: expr,
-                }),
-                "absolute" => self.arena.new_node(BulletMLNode::Direction {
-                    dir_type: Some(DirectionType::Absolute),
-                    dir: expr,
-                }),
-                "relative" => self.arena.new_node(BulletMLNode::Direction {
-                    dir_type: Some(DirectionType::Relative),
-                    dir: expr,
-                }),
-                "sequence" => self.arena.new_node(BulletMLNode::Direction {
-                    dir_type: Some(DirectionType::Sequence),
-                    dir: expr,
-                }),
-                _ => Err(ParseErrorKind::UnrecognizedDirectionType {
-                    dir_type: type_att.to_string(),
-                    pos: BulletMLParser::attribute_value_pos(&direction, "type"),
-                })?,
-            },
-            None => self.arena.new_node(BulletMLNode::Direction {
-                dir_type: None,
-                dir: expr,
-            }),
+        let dir_type = match type_att {
+            Some("aim") => Some(DirectionType::Aim),
+            Some("absolute") => Some(DirectionType::Absolute),
+            Some("relative") => Some(DirectionType::Relative),
+            Some("sequence") => Some(DirectionType::Sequence),
+            None => None,
+            Some(type_att) => Err(ParseErrorKind::UnrecognizedDirectionType {
+                dir_type: type_att.to_string(),
+                pos: BulletMLParser::attribute_value_pos(&direction, "type"),
+            })?,
         };
+        let expr = self.parse_expression(direction)?;
+        let id = self.arena.new_node(BulletMLNode::Direction {
+            dir_type,
+            dir: expr,
+        });
         Ok(id)
     }
 
     fn parse_speed(&mut self, speed: roxmltree::Node) -> Result<NodeId, ParseError> {
         let type_att = speed.attribute("type");
-        let expr = self.parse_expression(speed)?;
-        let id = match type_att {
-            Some(type_att) => match type_att {
-                "absolute" => self.arena.new_node(BulletMLNode::Speed {
-                    spd_type: Some(SpeedType::Absolute),
-                    spd: expr,
-                }),
-                "relative" => self.arena.new_node(BulletMLNode::Speed {
-                    spd_type: Some(SpeedType::Relative),
-                    spd: expr,
-                }),
-                "sequence" => self.arena.new_node(BulletMLNode::Speed {
-                    spd_type: Some(SpeedType::Sequence),
-                    spd: expr,
-                }),
-                _ => Err(ParseErrorKind::UnrecognizedSpeedType {
-                    speed_type: type_att.to_string(),
-                    pos: BulletMLParser::attribute_value_pos(&speed, "type"),
-                })?,
-            },
-            None => self.arena.new_node(BulletMLNode::Speed {
-                spd_type: None,
-                spd: expr,
-            }),
+        let spd_type = match type_att {
+            Some("absolute") => Some(SpeedType::Absolute),
+            Some("relative") => Some(SpeedType::Relative),
+            Some("sequence") => Some(SpeedType::Sequence),
+            None => None,
+            Some(type_att) => Err(ParseErrorKind::UnrecognizedSpeedType {
+                speed_type: type_att.to_string(),
+                pos: BulletMLParser::attribute_value_pos(&speed, "type"),
+            })?,
         };
+        let expr = self.parse_expression(speed)?;
+        let id = self.arena.new_node(BulletMLNode::Speed {
+            spd_type,
+            spd: expr,
+        });
         Ok(id)
     }
 
     fn parse_horizontal(&mut self, horizontal: roxmltree::Node) -> Result<NodeId, ParseError> {
         let type_att = horizontal.attribute("type");
-        let expr = self.parse_expression(horizontal)?;
-        let id = match type_att {
-            Some(type_att) => match type_att {
-                "absolute" => self.arena.new_node(BulletMLNode::Horizontal {
-                    h_type: HVType::Absolute,
-                    h: expr,
-                }),
-                "relative" => self.arena.new_node(BulletMLNode::Horizontal {
-                    h_type: HVType::Relative,
-                    h: expr,
-                }),
-                "sequence" => self.arena.new_node(BulletMLNode::Horizontal {
-                    h_type: HVType::Sequence,
-                    h: expr,
-                }),
-                _ => Err(ParseErrorKind::UnrecognizedAccelDirType {
-                    accel_dir_type: type_att.to_string(),
-                    pos: BulletMLParser::attribute_value_pos(&horizontal, "type"),
-                })?,
-            },
-            None => self.arena.new_node(BulletMLNode::Horizontal {
-                h_type: HVType::Absolute,
-                h: expr,
-            }),
+        let h_type = match type_att {
+            Some("absolute") | None => HVType::Absolute,
+            Some("relative") => HVType::Relative,
+            Some("sequence") => HVType::Sequence,
+            Some(type_att) => Err(ParseErrorKind::UnrecognizedAccelDirType {
+                accel_dir_type: type_att.to_string(),
+                pos: BulletMLParser::attribute_value_pos(&horizontal, "type"),
+            })?,
         };
+        let expr = self.parse_expression(horizontal)?;
+        let id = self
+            .arena
+            .new_node(BulletMLNode::Horizontal { h_type, h: expr });
         Ok(id)
     }
 
     fn parse_vertical(&mut self, vertical: roxmltree::Node) -> Result<NodeId, ParseError> {
         let type_att = vertical.attribute("type");
-        let expr = self.parse_expression(vertical)?;
-        let id = match type_att {
-            Some(type_att) => match type_att {
-                "absolute" => self.arena.new_node(BulletMLNode::Vertical {
-                    v_type: HVType::Absolute,
-                    v: expr,
-                }),
-                "relative" => self.arena.new_node(BulletMLNode::Vertical {
-                    v_type: HVType::Relative,
-                    v: expr,
-                }),
-                "sequence" => self.arena.new_node(BulletMLNode::Vertical {
-                    v_type: HVType::Sequence,
-                    v: expr,
-                }),
-                _ => Err(ParseErrorKind::UnrecognizedAccelDirType {
-                    accel_dir_type: type_att.to_string(),
-                    pos: BulletMLParser::attribute_value_pos(&vertical, "type"),
-                })?,
-            },
-            None => self.arena.new_node(BulletMLNode::Vertical {
-                v_type: HVType::Absolute,
-                v: expr,
-            }),
+        let v_type = match type_att {
+            Some("absolute") | None => HVType::Absolute,
+            Some("relative") => HVType::Relative,
+            Some("sequence") => HVType::Sequence,
+            Some(type_att) => Err(ParseErrorKind::UnrecognizedAccelDirType {
+                accel_dir_type: type_att.to_string(),
+                pos: BulletMLParser::attribute_value_pos(&vertical, "type"),
+            })?,
         };
+        let expr = self.parse_expression(vertical)?;
+        let id = self
+            .arena
+            .new_node(BulletMLNode::Vertical { v_type, v: expr });
         Ok(id)
     }
 
@@ -860,7 +813,7 @@ fn test_unrecognized_direction_type() {
         r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet>
-        <direction type="foo">0</direction>
+        <direction type="foo" />
     </bullet>
 </bulletml>"##,
     );
@@ -879,7 +832,7 @@ fn test_unrecognized_speed_type() {
         r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet>
-        <speed type="foo">0</speed>
+        <speed type="foo" />
     </bullet>
 </bulletml>"##,
     );
@@ -899,7 +852,7 @@ fn test_unrecognized_accel_horizontal_type() {
 <bulletml>
     <action>
         <accel>
-            <horizontal type="foo">0</horizontal>
+            <horizontal type="foo" />
         </accel>
     </action>
 </bulletml>"##,
@@ -920,7 +873,7 @@ fn test_unrecognized_accel_vertical_type() {
 <bulletml>
     <action>
         <accel>
-            <vertical type="foo">0</vertical>
+            <vertical type="foo" />
         </accel>
     </action>
 </bulletml>"##,
