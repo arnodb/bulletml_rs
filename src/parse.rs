@@ -1,4 +1,4 @@
-use errors::{ParseError, ParseErrorKind, ParseErrorPos};
+use crate::errors::{ParseError, ParseErrorKind, ParseErrorPos};
 use failure::{Fail, ResultExt};
 use indextree::{Arena, NodeId};
 use meval::Expr;

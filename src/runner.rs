@@ -138,8 +138,8 @@ impl<R> DerefMut for Runner<R> {
 pub trait AppRunner<D> {
     fn init(&mut self) {}
     fn get_bullet_direction(&self, data: &D) -> f64;
-    fn get_aim_direction(&self, &D) -> f64;
-    fn get_bullet_speed(&self, &D) -> f64;
+    fn get_aim_direction(&self, data: &D) -> f64;
+    fn get_bullet_speed(&self, data: &D) -> f64;
     fn get_default_speed(&self) -> f64;
     fn get_rank(&self, data: &D) -> f64;
     fn create_simple_bullet(&mut self, data: &mut D, direction: f64, speed: f64);
@@ -287,7 +287,7 @@ impl RunnerImpl {
         }
     }
 
-    fn run<D>(&mut self, data: &mut RunnerData<D>, runner: &mut AppRunner<D>) {
+    fn run<D>(&mut self, data: &mut RunnerData<D>, runner: &mut dyn AppRunner<D>) {
         if self.is_end() {
             return;
         }
@@ -334,7 +334,7 @@ impl RunnerImpl {
         }
     }
 
-    fn changes<D>(&mut self, data: &mut RunnerData<D>, runner: &AppRunner<D>) {
+    fn changes<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
         let now = runner.get_turn(&data.data);
         let reset = if let Some(change_dir) = &self.change_dir {
             if change_dir.is_last(now) {
@@ -394,7 +394,7 @@ impl RunnerImpl {
         }
     }
 
-    fn run_sub<D>(&mut self, data: &mut RunnerData<D>, runner: &mut AppRunner<D>) {
+    fn run_sub<D>(&mut self, data: &mut RunnerData<D>, runner: &mut dyn AppRunner<D>) {
         let bml = data.bml;
         while let Some(act) = self.act {
             if self.is_turn_end() {
@@ -533,7 +533,7 @@ impl RunnerImpl {
         dir_type: Option<DirectionType>,
         expr: &Expr,
         data: &mut RunnerData<D>,
-        runner: &AppRunner<D>,
+        runner: &dyn AppRunner<D>,
     ) -> f64 {
         let direction = self.get_number_contents(expr, data, runner);
         let (mut direction, aim) = match dir_type {
@@ -575,7 +575,7 @@ impl RunnerImpl {
         &mut self,
         bml: &BulletML,
         data: &mut RunnerData<D>,
-        runner: &AppRunner<D>,
+        runner: &dyn AppRunner<D>,
     ) {
         if let Some(act) = self.act {
             for child in act.children(&bml.arena) {
@@ -594,7 +594,7 @@ impl RunnerImpl {
         spd_type: Option<SpeedType>,
         expr: &Expr,
         data: &mut RunnerData<D>,
-        runner: &AppRunner<D>,
+        runner: &dyn AppRunner<D>,
     ) -> f64 {
         let mut speed = self.get_number_contents(expr, data, runner);
         speed = match spd_type {
@@ -613,7 +613,12 @@ impl RunnerImpl {
         speed
     }
 
-    fn set_speed<D>(&mut self, bml: &BulletML, data: &mut RunnerData<D>, runner: &AppRunner<D>) {
+    fn set_speed<D>(
+        &mut self,
+        bml: &BulletML,
+        data: &mut RunnerData<D>,
+        runner: &dyn AppRunner<D>,
+    ) {
         if let Some(act) = self.act {
             for child in act.children(&bml.arena) {
                 let child_node = &bml.arena[child];
@@ -626,7 +631,7 @@ impl RunnerImpl {
         }
     }
 
-    fn run_bullet<D>(&mut self, data: &mut RunnerData<D>, runner: &mut AppRunner<D>) {
+    fn run_bullet<D>(&mut self, data: &mut RunnerData<D>, runner: &mut dyn AppRunner<D>) {
         let bml = data.bml;
         self.set_speed(bml, data, runner);
         self.set_direction(bml, data, runner);
@@ -656,7 +661,7 @@ impl RunnerImpl {
         self.act = None;
     }
 
-    fn run_fire<D>(&mut self, bml: &BulletML, data: &mut RunnerData<D>, runner: &AppRunner<D>) {
+    fn run_fire<D>(&mut self, bml: &BulletML, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
         self.shot_init();
         self.set_speed(bml, data, runner);
         self.set_direction(bml, data, runner);
@@ -671,7 +676,7 @@ impl RunnerImpl {
         self.act = node.first_child();
     }
 
-    fn run_wait<D>(&mut self, expr: &Expr, data: &mut RunnerData<D>, runner: &AppRunner<D>) {
+    fn run_wait<D>(&mut self, expr: &Expr, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
         let frame = self.get_number_contents(expr, data, runner);
         self.do_wait(frame as u32);
         self.act = None;
@@ -682,7 +687,7 @@ impl RunnerImpl {
         bml: &BulletML,
         act: NodeId,
         data: &mut RunnerData<D>,
-        runner: &AppRunner<D>,
+        runner: &dyn AppRunner<D>,
     ) {
         let mut times: Option<usize> = None;
         for child in act.children(&bml.arena) {
@@ -716,7 +721,7 @@ impl RunnerImpl {
         bml: &BulletML,
         r: NodeId,
         data: &mut RunnerData<D>,
-        runner: &AppRunner<D>,
+        runner: &dyn AppRunner<D>,
     ) {
         let new_parameters = self.get_parameters(bml, data, runner);
         let prev_parameters = std::mem::replace(&mut self.parameters, new_parameters);
@@ -728,7 +733,7 @@ impl RunnerImpl {
         &mut self,
         bml: &BulletML,
         data: &mut RunnerData<D>,
-        runner: &AppRunner<D>,
+        runner: &dyn AppRunner<D>,
     ) {
         let term_node = RunnerImpl::get_first_child_matching(bml, self.act, BulletMLNode::is_term)
             .map(|term| &bml.arena[term]);
@@ -763,7 +768,7 @@ impl RunnerImpl {
         term: u32,
         seq: bool,
         data: &RunnerData<D>,
-        runner: &AppRunner<D>,
+        runner: &dyn AppRunner<D>,
     ) {
         let act_turn = self.act_turn.unwrap_or(0);
         let final_turn = act_turn + term;
@@ -800,7 +805,7 @@ impl RunnerImpl {
         &mut self,
         bml: &BulletML,
         data: &mut RunnerData<D>,
-        runner: &AppRunner<D>,
+        runner: &dyn AppRunner<D>,
     ) {
         let term_node = RunnerImpl::get_first_child_matching(bml, self.act, BulletMLNode::is_term)
             .map(|term| &bml.arena[term]);
@@ -835,7 +840,7 @@ impl RunnerImpl {
         speed: f64,
         term: u32,
         data: &RunnerData<D>,
-        runner: &AppRunner<D>,
+        runner: &dyn AppRunner<D>,
     ) {
         let act_turn = self.act_turn.unwrap_or(0);
         let final_turn = act_turn + term;
@@ -843,7 +848,12 @@ impl RunnerImpl {
         self.change_spd = Some(LinearFunc::new(act_turn, final_turn, spd_first, speed));
     }
 
-    fn run_accel<D>(&mut self, bml: &BulletML, data: &mut RunnerData<D>, runner: &AppRunner<D>) {
+    fn run_accel<D>(
+        &mut self,
+        bml: &BulletML,
+        data: &mut RunnerData<D>,
+        runner: &dyn AppRunner<D>,
+    ) {
         let term_node = RunnerImpl::get_first_child_matching(bml, self.act, BulletMLNode::is_term)
             .map(|term| &bml.arena[term]);
         if let Some(Node {
@@ -930,7 +940,7 @@ impl RunnerImpl {
         Some(LinearFunc::new(act_turn, final_turn, first_spd, final_spd))
     }
 
-    fn run_vanish<D>(&mut self, data: &mut RunnerData<D>, runner: &AppRunner<D>) {
+    fn run_vanish<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
         runner.do_vanish(&mut data.data);
         self.act = None;
     }
@@ -939,7 +949,7 @@ impl RunnerImpl {
         &self,
         bml: &BulletML,
         data: &mut RunnerData<D>,
-        runner: &AppRunner<D>,
+        runner: &dyn AppRunner<D>,
     ) -> Parameters {
         let children = self.act.unwrap().children(&bml.arena);
         let mut parameters = Vec::new();
@@ -956,7 +966,7 @@ impl RunnerImpl {
         &self,
         expr: &Expr,
         data: &mut RunnerData<D>,
-        runner: &AppRunner<D>,
+        runner: &dyn AppRunner<D>,
     ) -> f64 {
         let rank = runner.get_rank(&data.data);
         let data_cell = RefCell::new(&mut data.data);
@@ -1826,5 +1836,4 @@ mod test_runner {
         logs[2].assert_log(r#"Vanish"#, 1);
         logs[2].assert_log(r#"=== 5"#, 1);
     }
-
 }
