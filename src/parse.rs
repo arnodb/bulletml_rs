@@ -1,13 +1,12 @@
-use crate::errors::{ParseError, ParseErrorKind, ParseErrorPos};
-use failure::{Fail, ResultExt};
+use crate::errors::{ParseError, ParseErrorPos};
+use crate::tree::{BulletML, BulletMLNode, BulletMLType, DirectionType, HVType, SpeedType};
 use indextree::{Arena, NodeId};
 use roxmltree::TextPos;
+use std::backtrace::Backtrace;
 use std::collections::HashMap;
 use std::fs;
 use std::io::prelude::*;
 use std::path;
-
-use crate::tree::{BulletML, BulletMLNode, BulletMLType, DirectionType, HVType, SpeedType};
 
 pub struct BulletMLParser {
     arena: Arena<BulletMLNode>,
@@ -42,7 +41,7 @@ impl BulletMLParser {
     }
 
     pub fn parse(mut self, s: &str) -> Result<BulletML, ParseError> {
-        let doc = roxmltree::Document::parse(s).context(ParseErrorKind::Xml)?;
+        let doc = roxmltree::Document::parse(s)?;
         let root = doc.root_element();
         let root_name = root.tag_name();
         match root_name.name() {
@@ -57,18 +56,18 @@ impl BulletMLParser {
                     expr_slab: self.expr_slab,
                 })
             }
-            name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+            name => Err(ParseError::UnexpectedElement {
                 element: name.to_string(),
                 pos: BulletMLParser::node_pos(&root),
-            })),
+                backtrace: Backtrace::capture(),
+            }),
         }
     }
 
     pub fn parse_file(self, path: &path::Path) -> Result<BulletML, ParseError> {
-        let mut file = fs::File::open(&path).context(ParseErrorKind::FileOpen)?;
+        let mut file = fs::File::open(&path)?;
         let mut text = String::new();
-        file.read_to_string(&mut text)
-            .context(ParseErrorKind::FileRead)?;
+        file.read_to_string(&mut text)?;
         self.parse(&text)
     }
 
@@ -85,9 +84,10 @@ impl BulletMLParser {
                 "horizontal" => self.arena.new_node(BulletMLNode::BulletML {
                     bml_type: Some(BulletMLType::Horizontal),
                 }),
-                _ => Err(ParseErrorKind::UnrecognizedBmlType {
+                _ => Err(ParseError::UnrecognizedBmlType {
                     bml_type: type_att.to_string(),
                     pos: BulletMLParser::attribute_value_pos(&bulletml, "type"),
+                    backtrace: Backtrace::capture(),
                 })?,
             },
             None => self
@@ -100,13 +100,14 @@ impl BulletMLParser {
                 "bullet" => self.parse_bullet(child)?,
                 "action" => self.parse_action(child)?,
                 "fire" => self.parse_fire(child)?,
-                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
-                }))?,
+                    backtrace: Backtrace::capture(),
+                })?,
             };
             id.append(child_id, &mut self.arena)
-                .context(ParseErrorKind::Internal)?;
+                .map_err(Box::<dyn std::error::Error>::from)?;
         }
         Ok(id)
     }
@@ -129,13 +130,14 @@ impl BulletMLParser {
                 "speed" => self.parse_speed(child)?,
                 "action" => self.parse_action(child)?,
                 "actionRef" => self.parse_action_ref(child)?,
-                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
-                }))?,
+                    backtrace: Backtrace::capture(),
+                })?,
             };
             id.append(child_id, &mut self.arena)
-                .context(ParseErrorKind::Internal)?;
+                .map_err(Box::<dyn std::error::Error>::from)?;
         }
         Ok(id)
     }
@@ -164,13 +166,14 @@ impl BulletMLParser {
                 "vanish" => self.parse_vanish(child)?,
                 "action" => self.parse_action(child)?,
                 "actionRef" => self.parse_action_ref(child)?,
-                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
-                }))?,
+                    backtrace: Backtrace::capture(),
+                })?,
             };
             id.append(child_id, &mut self.arena)
-                .context(ParseErrorKind::Internal)?;
+                .map_err(Box::<dyn std::error::Error>::from)?;
         }
         Ok(id)
     }
@@ -193,13 +196,14 @@ impl BulletMLParser {
                 "speed" => self.parse_speed(child)?,
                 "bullet" => self.parse_bullet(child)?,
                 "bulletRef" => self.parse_bullet_ref(child)?,
-                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
-                }))?,
+                    backtrace: Backtrace::capture(),
+                })?,
             };
             id.append(child_id, &mut self.arena)
-                .context(ParseErrorKind::Internal)?;
+                .map_err(Box::<dyn std::error::Error>::from)?;
         }
         Ok(id)
     }
@@ -214,13 +218,14 @@ impl BulletMLParser {
             let child_id = match child_name.name() {
                 "direction" => self.parse_direction(child)?,
                 "term" => self.parse_term(child)?,
-                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
-                }))?,
+                    backtrace: Backtrace::capture(),
+                })?,
             };
             id.append(child_id, &mut self.arena)
-                .context(ParseErrorKind::Internal)?;
+                .map_err(Box::<dyn std::error::Error>::from)?;
         }
         Ok(id)
     }
@@ -232,13 +237,14 @@ impl BulletMLParser {
             let child_id = match child_name.name() {
                 "speed" => self.parse_speed(child)?,
                 "term" => self.parse_term(child)?,
-                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
-                }))?,
+                    backtrace: Backtrace::capture(),
+                })?,
             };
             id.append(child_id, &mut self.arena)
-                .context(ParseErrorKind::Internal)?;
+                .map_err(Box::<dyn std::error::Error>::from)?;
         }
         Ok(id)
     }
@@ -251,13 +257,14 @@ impl BulletMLParser {
                 "horizontal" => self.parse_horizontal(child)?,
                 "vertical" => self.parse_vertical(child)?,
                 "term" => self.parse_term(child)?,
-                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
-                }))?,
+                    backtrace: Backtrace::capture(),
+                })?,
             };
             id.append(child_id, &mut self.arena)
-                .context(ParseErrorKind::Internal)?;
+                .map_err(Box::<dyn std::error::Error>::from)?;
         }
         Ok(id)
     }
@@ -281,13 +288,14 @@ impl BulletMLParser {
                 "times" => self.parse_times(child)?,
                 "action" => self.parse_action(child)?,
                 "actionRef" => self.parse_action_ref(child)?,
-                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
-                }))?,
+                    backtrace: Backtrace::capture(),
+                })?,
             };
             id.append(child_id, &mut self.arena)
-                .context(ParseErrorKind::Internal)?;
+                .map_err(Box::<dyn std::error::Error>::from)?;
         }
         Ok(id)
     }
@@ -300,9 +308,10 @@ impl BulletMLParser {
             Some("relative") => Some(DirectionType::Relative),
             Some("sequence") => Some(DirectionType::Sequence),
             None => None,
-            Some(type_att) => Err(ParseErrorKind::UnrecognizedDirectionType {
+            Some(type_att) => Err(ParseError::UnrecognizedDirectionType {
                 dir_type: type_att.to_string(),
                 pos: BulletMLParser::attribute_value_pos(&direction, "type"),
+                backtrace: Backtrace::capture(),
             })?,
         };
         let expr = self.parse_expression(direction)?;
@@ -320,9 +329,10 @@ impl BulletMLParser {
             Some("relative") => Some(SpeedType::Relative),
             Some("sequence") => Some(SpeedType::Sequence),
             None => None,
-            Some(type_att) => Err(ParseErrorKind::UnrecognizedSpeedType {
+            Some(type_att) => Err(ParseError::UnrecognizedSpeedType {
                 speed_type: type_att.to_string(),
                 pos: BulletMLParser::attribute_value_pos(&speed, "type"),
+                backtrace: Backtrace::capture(),
             })?,
         };
         let expr = self.parse_expression(speed)?;
@@ -339,9 +349,10 @@ impl BulletMLParser {
             Some("absolute") | None => HVType::Absolute,
             Some("relative") => HVType::Relative,
             Some("sequence") => HVType::Sequence,
-            Some(type_att) => Err(ParseErrorKind::UnrecognizedAccelDirType {
+            Some(type_att) => Err(ParseError::UnrecognizedAccelDirType {
                 accel_dir_type: type_att.to_string(),
                 pos: BulletMLParser::attribute_value_pos(&horizontal, "type"),
+                backtrace: Backtrace::capture(),
             })?,
         };
         let expr = self.parse_expression(horizontal)?;
@@ -357,9 +368,10 @@ impl BulletMLParser {
             Some("absolute") | None => HVType::Absolute,
             Some("relative") => HVType::Relative,
             Some("sequence") => HVType::Sequence,
-            Some(type_att) => Err(ParseErrorKind::UnrecognizedAccelDirType {
+            Some(type_att) => Err(ParseError::UnrecognizedAccelDirType {
                 accel_dir_type: type_att.to_string(),
                 pos: BulletMLParser::attribute_value_pos(&vertical, "type"),
+                backtrace: Backtrace::capture(),
             })?,
         };
         let expr = self.parse_expression(vertical)?;
@@ -386,11 +398,12 @@ impl BulletMLParser {
         let label = if let Some(label) = label {
             label
         } else {
-            Err(ParseError::from(ParseErrorKind::MissingAttribute {
+            Err(ParseError::MissingAttribute {
                 attribute: "label".to_string(),
                 element: bullet_ref.tag_name().name().to_string(),
                 pos: BulletMLParser::node_pos(&bullet_ref),
-            }))?
+                backtrace: Backtrace::capture(),
+            })?
         };
         let id = self
             .arena
@@ -399,13 +412,14 @@ impl BulletMLParser {
             let child_name = child.tag_name();
             let child_id = match child_name.name() {
                 "param" => self.parse_param(child)?,
-                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
-                }))?,
+                    backtrace: Backtrace::capture(),
+                })?,
             };
             id.append(child_id, &mut self.arena)
-                .context(ParseErrorKind::Internal)?;
+                .map_err(Box::<dyn std::error::Error>::from)?;
         }
         Ok(id)
     }
@@ -415,11 +429,12 @@ impl BulletMLParser {
         let label = if let Some(label) = label {
             label
         } else {
-            Err(ParseError::from(ParseErrorKind::MissingAttribute {
+            Err(ParseError::MissingAttribute {
                 attribute: "label".to_string(),
                 element: action_ref.tag_name().name().to_string(),
                 pos: BulletMLParser::node_pos(&action_ref),
-            }))?
+                backtrace: Backtrace::capture(),
+            })?
         };
         let id = self
             .arena
@@ -428,13 +443,14 @@ impl BulletMLParser {
             let child_name = child.tag_name();
             let child_id = match child_name.name() {
                 "param" => self.parse_param(child)?,
-                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
-                }))?,
+                    backtrace: Backtrace::capture(),
+                })?,
             };
             id.append(child_id, &mut self.arena)
-                .context(ParseErrorKind::Internal)?;
+                .map_err(Box::<dyn std::error::Error>::from)?;
         }
         Ok(id)
     }
@@ -444,11 +460,12 @@ impl BulletMLParser {
         let label = if let Some(label) = label {
             label
         } else {
-            Err(ParseError::from(ParseErrorKind::MissingAttribute {
+            Err(ParseError::MissingAttribute {
                 attribute: "label".to_string(),
                 element: fire_ref.tag_name().name().to_string(),
                 pos: BulletMLParser::node_pos(&fire_ref),
-            }))?
+                backtrace: Backtrace::capture(),
+            })?
         };
         let id = self
             .arena
@@ -457,13 +474,14 @@ impl BulletMLParser {
             let child_name = child.tag_name();
             let child_id = match child_name.name() {
                 "param" => self.parse_param(child)?,
-                name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
+                name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
-                }))?,
+                    backtrace: Backtrace::capture(),
+                })?,
             };
             id.append(child_id, &mut self.arena)
-                .context(ParseErrorKind::Internal)?;
+                .map_err(Box::<dyn std::error::Error>::from)?;
         }
         Ok(id)
     }
@@ -486,10 +504,11 @@ impl BulletMLParser {
                     str.push_str(child.text().unwrap());
                 }
                 roxmltree::NodeType::Root | roxmltree::NodeType::Element => {
-                    Err(ParseError::from(ParseErrorKind::UnexpectedNodeType {
+                    Err(ParseError::UnexpectedNodeType {
                         node_type: format!("{:?}", node_type),
                         pos: BulletMLParser::node_pos(&child),
-                    }))?
+                        backtrace: Backtrace::capture(),
+                    })?
                 }
                 roxmltree::NodeType::Comment | roxmltree::NodeType::PI => {}
             }
@@ -511,10 +530,10 @@ impl BulletMLParser {
         let expr_ref = self
             .expr_parser
             .parse_noclear(&str, &mut self.expr_slab.ps)
-            .map_err(|err| {
-                ParseError::from(err.context(ParseErrorKind::Expression {
-                    pos: BulletMLParser::node_pos(parent.first_child().as_ref().unwrap_or(&parent)),
-                }))
+            .map_err(|err| ParseError::Expression {
+                source: err,
+                pos: BulletMLParser::node_pos(parent.first_child().as_ref().unwrap_or(&parent)),
+                backtrace: Backtrace::capture(),
             })?;
         Ok(expr_ref)
     }
@@ -671,12 +690,18 @@ fn test_unexpected_root() {
         r##"<?xml version="1.0" ?>
 <foo />"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnexpectedElement {
+            ref element,
+            pos: ParseErrorPos { row: 2, col: 1 },
+            backtrace: _,
+        } if element == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnexpectedElement {
-            element: "foo".to_string(),
-            pos: ParseErrorPos { row: 2, col: 1 }
-        }
+        format!("{}", &err),
+        "Unexpected element foo at position 2:1"
     );
 }
 
@@ -686,12 +711,18 @@ fn test_unrecognized_bml_type() {
         r##"<?xml version="1.0" ?>
 <bulletml type="foo" />"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnrecognizedBmlType {
+            ref bml_type,
+            pos: ParseErrorPos { row: 2, col: 17 },
+            backtrace: _,
+        }  if bml_type == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnrecognizedBmlType {
-            bml_type: "foo".to_string(),
-            pos: ParseErrorPos { row: 2, col: 17 }
-        }
+        format!("{}", &err),
+        "Unrecognized BulletML type foo at position 2:17"
     );
 }
 
@@ -703,12 +734,18 @@ fn test_unexpected_bulletml_child() {
     <foo />
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnexpectedElement {
+            ref element,
+            pos: ParseErrorPos { row: 3, col: 5 },
+            backtrace: _,
+        } if element == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnexpectedElement {
-            element: "foo".to_string(),
-            pos: ParseErrorPos { row: 3, col: 5 }
-        }
+        format!("{}", &err),
+        "Unexpected element foo at position 3:5"
     );
 }
 
@@ -722,12 +759,18 @@ fn test_unexpected_bullet_child() {
     </bullet>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnexpectedElement {
+            ref element,
+            pos: ParseErrorPos { row: 4, col: 9 },
+            backtrace: _,
+        } if element == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnexpectedElement {
-            element: "foo".to_string(),
-            pos: ParseErrorPos { row: 4, col: 9 }
-        }
+        format!("{}", &err),
+        "Unexpected element foo at position 4:9"
     );
 }
 
@@ -741,12 +784,18 @@ fn test_unexpected_action_child() {
     </action>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnexpectedElement {
+            ref element,
+            pos: ParseErrorPos { row: 4, col: 9 },
+            backtrace: _,
+        } if element == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnexpectedElement {
-            element: "foo".to_string(),
-            pos: ParseErrorPos { row: 4, col: 9 }
-        }
+        format!("{}", &err),
+        "Unexpected element foo at position 4:9"
     );
 }
 
@@ -760,12 +809,18 @@ fn test_unexpected_fire_child() {
     </fire>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnexpectedElement {
+            ref element,
+            pos: ParseErrorPos { row: 4, col: 9 },
+            backtrace: _,
+        } if element == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnexpectedElement {
-            element: "foo".to_string(),
-            pos: ParseErrorPos { row: 4, col: 9 }
-        }
+        format!("{}", &err),
+        "Unexpected element foo at position 4:9"
     );
 }
 
@@ -781,12 +836,18 @@ fn test_unexpected_change_direction_child() {
     </action>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnexpectedElement {
+            ref element,
+            pos: ParseErrorPos { row: 5, col: 13 },
+            backtrace: _,
+        } if element == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnexpectedElement {
-            element: "foo".to_string(),
-            pos: ParseErrorPos { row: 5, col: 13 }
-        }
+        format!("{}", &err),
+        "Unexpected element foo at position 5:13"
     );
 }
 
@@ -802,12 +863,18 @@ fn test_unexpected_change_speed_child() {
     </action>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnexpectedElement {
+            ref element,
+            pos: ParseErrorPos { row: 5, col: 13 },
+            backtrace: _,
+        } if element == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnexpectedElement {
-            element: "foo".to_string(),
-            pos: ParseErrorPos { row: 5, col: 13 }
-        }
+        format!("{}", &err),
+        "Unexpected element foo at position 5:13"
     );
 }
 
@@ -823,12 +890,18 @@ fn test_unexpected_accel_child() {
     </action>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnexpectedElement {
+            ref element,
+            pos: ParseErrorPos { row: 5, col: 13 },
+            backtrace: _,
+        } if element == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnexpectedElement {
-            element: "foo".to_string(),
-            pos: ParseErrorPos { row: 5, col: 13 }
-        }
+        format!("{}", &err),
+        "Unexpected element foo at position 5:13"
     );
 }
 
@@ -844,12 +917,18 @@ fn test_unexpected_repeat_child() {
     </action>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnexpectedElement {
+            ref element,
+            pos: ParseErrorPos { row: 5, col: 13 },
+            backtrace: _,
+        } if element == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnexpectedElement {
-            element: "foo".to_string(),
-            pos: ParseErrorPos { row: 5, col: 13 }
-        }
+        format!("{}", &err),
+        "Unexpected element foo at position 5:13"
     );
 }
 
@@ -863,12 +942,18 @@ fn test_unrecognized_direction_type() {
     </bullet>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnrecognizedDirectionType {
+            ref dir_type,
+            pos: ParseErrorPos { row: 4, col: 26 },
+            backtrace: _,
+        } if dir_type == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnrecognizedDirectionType {
-            dir_type: "foo".to_string(),
-            pos: ParseErrorPos { row: 4, col: 26 }
-        }
+        format!("{}", &err),
+        "Unrecognized direction type foo at position 4:26"
     );
 }
 
@@ -882,12 +967,18 @@ fn test_unrecognized_speed_type() {
     </bullet>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnrecognizedSpeedType {
+            ref speed_type,
+            pos: ParseErrorPos { row: 4, col: 22 },
+            backtrace: _,
+        } if speed_type == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnrecognizedSpeedType {
-            speed_type: "foo".to_string(),
-            pos: ParseErrorPos { row: 4, col: 22 }
-        }
+        format!("{}", &err),
+        "Unrecognized speed type foo at position 4:22"
     );
 }
 
@@ -903,12 +994,18 @@ fn test_unrecognized_accel_horizontal_type() {
     </action>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnrecognizedAccelDirType {
+            ref accel_dir_type,
+            pos: ParseErrorPos { row: 5, col: 31 },
+            backtrace: _,
+        } if accel_dir_type == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnrecognizedAccelDirType {
-            accel_dir_type: "foo".to_string(),
-            pos: ParseErrorPos { row: 5, col: 31 }
-        }
+        format!("{}", &err),
+        "Unrecognized acceleration direction type foo at position 5:31"
     );
 }
 
@@ -924,12 +1021,18 @@ fn test_unrecognized_accel_vertical_type() {
     </action>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnrecognizedAccelDirType {
+            ref accel_dir_type,
+            pos: ParseErrorPos { row: 5, col: 29 },
+            backtrace: _,
+        } if accel_dir_type == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnrecognizedAccelDirType {
-            accel_dir_type: "foo".to_string(),
-            pos: ParseErrorPos { row: 5, col: 29 }
-        }
+        format!("{}", &err),
+        "Unrecognized acceleration direction type foo at position 5:29"
     );
 }
 
@@ -943,13 +1046,19 @@ fn test_missing_bullet_ref_label() {
     </fire>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::MissingAttribute {
+            ref attribute,
+            ref element,
+            pos: ParseErrorPos { row: 4, col: 9 },
+            backtrace: _,
+        } if attribute == "label" && element == "bulletRef"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::MissingAttribute {
-            attribute: "label".to_string(),
-            element: "bulletRef".to_string(),
-            pos: ParseErrorPos { row: 4, col: 9 }
-        }
+        format!("{}", &err),
+        "Missing attribute label in element bulletRef at position 4:9"
     );
 }
 
@@ -965,12 +1074,18 @@ fn test_unexpected_bullet_ref_child() {
     </fire>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnexpectedElement {
+            ref element,
+            pos: ParseErrorPos { row: 5, col: 13 },
+            backtrace: _,
+        } if element == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnexpectedElement {
-            element: "foo".to_string(),
-            pos: ParseErrorPos { row: 5, col: 13 }
-        }
+        format!("{}", &err),
+        "Unexpected element foo at position 5:13"
     );
 }
 
@@ -984,13 +1099,19 @@ fn test_missing_action_ref_label() {
     </bullet>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::MissingAttribute {
+            ref attribute,
+            ref element,
+            pos: ParseErrorPos { row: 4, col: 9 },
+            backtrace: _,
+        } if attribute == "label" && element == "actionRef"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::MissingAttribute {
-            attribute: "label".to_string(),
-            element: "actionRef".to_string(),
-            pos: ParseErrorPos { row: 4, col: 9 }
-        }
+        format!("{}", &err),
+        "Missing attribute label in element actionRef at position 4:9"
     );
 }
 
@@ -1006,12 +1127,18 @@ fn test_unexpected_action_ref_child() {
     </bullet>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnexpectedElement {
+            ref element,
+            pos: ParseErrorPos { row: 5, col: 13 },
+            backtrace: _,
+        } if element == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnexpectedElement {
-            element: "foo".to_string(),
-            pos: ParseErrorPos { row: 5, col: 13 }
-        }
+        format!("{}", &err),
+        "Unexpected element foo at position 5:13"
     );
 }
 
@@ -1025,13 +1152,19 @@ fn test_missing_fire_ref_label() {
     </action>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::MissingAttribute {
+            ref attribute,
+            ref element,
+            pos: ParseErrorPos { row: 4, col: 9 },
+            backtrace: _,
+        } if attribute == "label" && element == "fireRef"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::MissingAttribute {
-            attribute: "label".to_string(),
-            element: "fireRef".to_string(),
-            pos: ParseErrorPos { row: 4, col: 9 }
-        }
+        format!("{}", &err),
+        "Missing attribute label in element fireRef at position 4:9"
     );
 }
 
@@ -1047,12 +1180,18 @@ fn test_unexpected_fire_ref_child() {
     </action>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnexpectedElement {
+            ref element,
+            pos: ParseErrorPos { row: 5, col: 13 },
+            backtrace: _,
+        } if element == "foo"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnexpectedElement {
-            element: "foo".to_string(),
-            pos: ParseErrorPos { row: 5, col: 13 }
-        }
+        format!("{}", &err),
+        "Unexpected element foo at position 5:13"
     );
 }
 
@@ -1066,17 +1205,25 @@ fn test_unexpected_node_type_in_expression() {
     </bullet>
 </bulletml>"##,
     );
+    let err = bml.unwrap_err();
+    assert_matches!(
+        err,
+        ParseError::UnexpectedNodeType {
+            ref node_type,
+            pos: ParseErrorPos { row: 4, col: 20 },
+            backtrace: _,
+        } if node_type == "Element"
+    );
     assert_eq!(
-        bml.unwrap_err().kind(),
-        &ParseErrorKind::UnexpectedNodeType {
-            node_type: "Element".to_string(),
-            pos: ParseErrorPos { row: 4, col: 20 }
-        }
+        format!("{}", &err),
+        "Unexpected node of type Element at position 4:20"
     );
 }
 
 #[test]
 fn test_expression_error() {
+    use std::error::Error;
+
     let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
@@ -1086,15 +1233,18 @@ fn test_expression_error() {
 </bulletml>"##,
     );
     let err = bml.unwrap_err();
-    assert_eq!(
-        err.kind(),
-        &ParseErrorKind::Expression {
-            pos: ParseErrorPos { row: 4, col: 20 }
+    assert_matches!(
+        err,
+        ParseError::Expression {
+            source: _,
+            pos: ParseErrorPos { row: 4, col: 20 },
+            backtrace: _,
         }
     );
-    let cause = err.cause().unwrap().downcast_ref::<fasteval::Error>();
+    let cause = err.source().unwrap().downcast_ref::<fasteval::Error>();
     assert_matches!(
         cause,
         Some(&fasteval::Error::EofWhileParsing(ref s)) if s.as_str() == "value"
     );
+    assert_eq!(format!("{}", &err), "Expression error at position 4:20");
 }

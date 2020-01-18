@@ -5,11 +5,11 @@ authors = ["Arnaud de Bossoreille <arnaud.debossoreille@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-failure = "0.1"
 indextree = "3.0"
 fasteval = "0.2"
 regex = "1.3"
 roxmltree = "0.3"
+thiserror = "1.0"
 
 [dev-dependencies]
 matches = "0.1"
