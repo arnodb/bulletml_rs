@@ -2,6 +2,7 @@ use crate::errors::{ParseError, ParseErrorPos};
 use crate::tree::{BulletML, BulletMLNode, BulletMLType, DirectionType, HVType, SpeedType};
 use indextree::{Arena, NodeId};
 use roxmltree::TextPos;
+#[cfg(feature = "backtrace")]
 use std::backtrace::Backtrace;
 use std::collections::HashMap;
 use std::fs;
@@ -59,6 +60,7 @@ impl BulletMLParser {
             name => Err(ParseError::UnexpectedElement {
                 element: name.to_string(),
                 pos: BulletMLParser::node_pos(&root),
+                #[cfg(feature = "backtrace")]
                 backtrace: Backtrace::capture(),
             }),
         }
@@ -87,6 +89,7 @@ impl BulletMLParser {
                 _ => Err(ParseError::UnrecognizedBmlType {
                     bml_type: type_att.to_string(),
                     pos: BulletMLParser::attribute_value_pos(&bulletml, "type"),
+                    #[cfg(feature = "backtrace")]
                     backtrace: Backtrace::capture(),
                 })?,
             },
@@ -103,6 +106,7 @@ impl BulletMLParser {
                 name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
+                    #[cfg(feature = "backtrace")]
                     backtrace: Backtrace::capture(),
                 })?,
             };
@@ -133,6 +137,7 @@ impl BulletMLParser {
                 name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
+                    #[cfg(feature = "backtrace")]
                     backtrace: Backtrace::capture(),
                 })?,
             };
@@ -169,6 +174,7 @@ impl BulletMLParser {
                 name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
+                    #[cfg(feature = "backtrace")]
                     backtrace: Backtrace::capture(),
                 })?,
             };
@@ -199,6 +205,7 @@ impl BulletMLParser {
                 name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
+                    #[cfg(feature = "backtrace")]
                     backtrace: Backtrace::capture(),
                 })?,
             };
@@ -221,6 +228,7 @@ impl BulletMLParser {
                 name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
+                    #[cfg(feature = "backtrace")]
                     backtrace: Backtrace::capture(),
                 })?,
             };
@@ -240,6 +248,7 @@ impl BulletMLParser {
                 name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
+                    #[cfg(feature = "backtrace")]
                     backtrace: Backtrace::capture(),
                 })?,
             };
@@ -260,6 +269,7 @@ impl BulletMLParser {
                 name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
+                    #[cfg(feature = "backtrace")]
                     backtrace: Backtrace::capture(),
                 })?,
             };
@@ -291,6 +301,7 @@ impl BulletMLParser {
                 name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
+                    #[cfg(feature = "backtrace")]
                     backtrace: Backtrace::capture(),
                 })?,
             };
@@ -311,6 +322,7 @@ impl BulletMLParser {
             Some(type_att) => Err(ParseError::UnrecognizedDirectionType {
                 dir_type: type_att.to_string(),
                 pos: BulletMLParser::attribute_value_pos(&direction, "type"),
+                #[cfg(feature = "backtrace")]
                 backtrace: Backtrace::capture(),
             })?,
         };
@@ -332,6 +344,7 @@ impl BulletMLParser {
             Some(type_att) => Err(ParseError::UnrecognizedSpeedType {
                 speed_type: type_att.to_string(),
                 pos: BulletMLParser::attribute_value_pos(&speed, "type"),
+                #[cfg(feature = "backtrace")]
                 backtrace: Backtrace::capture(),
             })?,
         };
@@ -352,6 +365,7 @@ impl BulletMLParser {
             Some(type_att) => Err(ParseError::UnrecognizedAccelDirType {
                 accel_dir_type: type_att.to_string(),
                 pos: BulletMLParser::attribute_value_pos(&horizontal, "type"),
+                #[cfg(feature = "backtrace")]
                 backtrace: Backtrace::capture(),
             })?,
         };
@@ -371,6 +385,7 @@ impl BulletMLParser {
             Some(type_att) => Err(ParseError::UnrecognizedAccelDirType {
                 accel_dir_type: type_att.to_string(),
                 pos: BulletMLParser::attribute_value_pos(&vertical, "type"),
+                #[cfg(feature = "backtrace")]
                 backtrace: Backtrace::capture(),
             })?,
         };
@@ -402,6 +417,7 @@ impl BulletMLParser {
                 attribute: "label".to_string(),
                 element: bullet_ref.tag_name().name().to_string(),
                 pos: BulletMLParser::node_pos(&bullet_ref),
+                #[cfg(feature = "backtrace")]
                 backtrace: Backtrace::capture(),
             })?
         };
@@ -415,6 +431,7 @@ impl BulletMLParser {
                 name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
+                    #[cfg(feature = "backtrace")]
                     backtrace: Backtrace::capture(),
                 })?,
             };
@@ -433,6 +450,7 @@ impl BulletMLParser {
                 attribute: "label".to_string(),
                 element: action_ref.tag_name().name().to_string(),
                 pos: BulletMLParser::node_pos(&action_ref),
+                #[cfg(feature = "backtrace")]
                 backtrace: Backtrace::capture(),
             })?
         };
@@ -446,6 +464,7 @@ impl BulletMLParser {
                 name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
+                    #[cfg(feature = "backtrace")]
                     backtrace: Backtrace::capture(),
                 })?,
             };
@@ -464,6 +483,7 @@ impl BulletMLParser {
                 attribute: "label".to_string(),
                 element: fire_ref.tag_name().name().to_string(),
                 pos: BulletMLParser::node_pos(&fire_ref),
+                #[cfg(feature = "backtrace")]
                 backtrace: Backtrace::capture(),
             })?
         };
@@ -477,6 +497,7 @@ impl BulletMLParser {
                 name => Err(ParseError::UnexpectedElement {
                     element: name.to_string(),
                     pos: BulletMLParser::node_pos(&child),
+                    #[cfg(feature = "backtrace")]
                     backtrace: Backtrace::capture(),
                 })?,
             };
@@ -507,6 +528,7 @@ impl BulletMLParser {
                     Err(ParseError::UnexpectedNodeType {
                         node_type: format!("{:?}", node_type),
                         pos: BulletMLParser::node_pos(&child),
+                        #[cfg(feature = "backtrace")]
                         backtrace: Backtrace::capture(),
                     })?
                 }
@@ -533,6 +555,7 @@ impl BulletMLParser {
             .map_err(|err| ParseError::Expression {
                 source: err,
                 pos: BulletMLParser::node_pos(parent.first_child().as_ref().unwrap_or(&parent)),
+                #[cfg(feature = "backtrace")]
                 backtrace: Backtrace::capture(),
             })?;
         Ok(expr_ref)
@@ -696,6 +719,7 @@ fn test_unexpected_root() {
         ParseError::UnexpectedElement {
             ref element,
             pos: ParseErrorPos { row: 2, col: 1 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if element == "foo"
     );
@@ -717,6 +741,7 @@ fn test_unrecognized_bml_type() {
         ParseError::UnrecognizedBmlType {
             ref bml_type,
             pos: ParseErrorPos { row: 2, col: 17 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         }  if bml_type == "foo"
     );
@@ -740,6 +765,7 @@ fn test_unexpected_bulletml_child() {
         ParseError::UnexpectedElement {
             ref element,
             pos: ParseErrorPos { row: 3, col: 5 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if element == "foo"
     );
@@ -765,6 +791,7 @@ fn test_unexpected_bullet_child() {
         ParseError::UnexpectedElement {
             ref element,
             pos: ParseErrorPos { row: 4, col: 9 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if element == "foo"
     );
@@ -790,6 +817,7 @@ fn test_unexpected_action_child() {
         ParseError::UnexpectedElement {
             ref element,
             pos: ParseErrorPos { row: 4, col: 9 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if element == "foo"
     );
@@ -815,6 +843,7 @@ fn test_unexpected_fire_child() {
         ParseError::UnexpectedElement {
             ref element,
             pos: ParseErrorPos { row: 4, col: 9 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if element == "foo"
     );
@@ -842,6 +871,7 @@ fn test_unexpected_change_direction_child() {
         ParseError::UnexpectedElement {
             ref element,
             pos: ParseErrorPos { row: 5, col: 13 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if element == "foo"
     );
@@ -869,6 +899,7 @@ fn test_unexpected_change_speed_child() {
         ParseError::UnexpectedElement {
             ref element,
             pos: ParseErrorPos { row: 5, col: 13 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if element == "foo"
     );
@@ -896,6 +927,7 @@ fn test_unexpected_accel_child() {
         ParseError::UnexpectedElement {
             ref element,
             pos: ParseErrorPos { row: 5, col: 13 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if element == "foo"
     );
@@ -923,6 +955,7 @@ fn test_unexpected_repeat_child() {
         ParseError::UnexpectedElement {
             ref element,
             pos: ParseErrorPos { row: 5, col: 13 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if element == "foo"
     );
@@ -948,6 +981,7 @@ fn test_unrecognized_direction_type() {
         ParseError::UnrecognizedDirectionType {
             ref dir_type,
             pos: ParseErrorPos { row: 4, col: 26 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if dir_type == "foo"
     );
@@ -973,6 +1007,7 @@ fn test_unrecognized_speed_type() {
         ParseError::UnrecognizedSpeedType {
             ref speed_type,
             pos: ParseErrorPos { row: 4, col: 22 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if speed_type == "foo"
     );
@@ -1000,6 +1035,7 @@ fn test_unrecognized_accel_horizontal_type() {
         ParseError::UnrecognizedAccelDirType {
             ref accel_dir_type,
             pos: ParseErrorPos { row: 5, col: 31 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if accel_dir_type == "foo"
     );
@@ -1027,6 +1063,7 @@ fn test_unrecognized_accel_vertical_type() {
         ParseError::UnrecognizedAccelDirType {
             ref accel_dir_type,
             pos: ParseErrorPos { row: 5, col: 29 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if accel_dir_type == "foo"
     );
@@ -1053,6 +1090,7 @@ fn test_missing_bullet_ref_label() {
             ref attribute,
             ref element,
             pos: ParseErrorPos { row: 4, col: 9 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if attribute == "label" && element == "bulletRef"
     );
@@ -1080,6 +1118,7 @@ fn test_unexpected_bullet_ref_child() {
         ParseError::UnexpectedElement {
             ref element,
             pos: ParseErrorPos { row: 5, col: 13 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if element == "foo"
     );
@@ -1106,6 +1145,7 @@ fn test_missing_action_ref_label() {
             ref attribute,
             ref element,
             pos: ParseErrorPos { row: 4, col: 9 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if attribute == "label" && element == "actionRef"
     );
@@ -1133,6 +1173,7 @@ fn test_unexpected_action_ref_child() {
         ParseError::UnexpectedElement {
             ref element,
             pos: ParseErrorPos { row: 5, col: 13 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if element == "foo"
     );
@@ -1159,6 +1200,7 @@ fn test_missing_fire_ref_label() {
             ref attribute,
             ref element,
             pos: ParseErrorPos { row: 4, col: 9 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if attribute == "label" && element == "fireRef"
     );
@@ -1186,6 +1228,7 @@ fn test_unexpected_fire_ref_child() {
         ParseError::UnexpectedElement {
             ref element,
             pos: ParseErrorPos { row: 5, col: 13 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if element == "foo"
     );
@@ -1211,6 +1254,7 @@ fn test_unexpected_node_type_in_expression() {
         ParseError::UnexpectedNodeType {
             ref node_type,
             pos: ParseErrorPos { row: 4, col: 20 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         } if node_type == "Element"
     );
@@ -1238,6 +1282,7 @@ fn test_expression_error() {
         ParseError::Expression {
             source: _,
             pos: ParseErrorPos { row: 4, col: 20 },
+            #[cfg(feature = "backtrace")]
             backtrace: _,
         }
     );

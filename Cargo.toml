@@ -13,3 +13,6 @@ thiserror = "1.0"
 
 [dev-dependencies]
 matches = "0.1"
+
+[features]
+backtrace = []

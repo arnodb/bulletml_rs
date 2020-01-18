@@ -1,4 +1,5 @@
 use roxmltree::TextPos;
+#[cfg(feature = "backtrace")]
 use std::backtrace::Backtrace;
 use std::fmt::{Display, Formatter};
 
@@ -8,6 +9,7 @@ pub enum ParseError {
     Io {
         #[from]
         source: std::io::Error,
+        #[cfg(feature = "backtrace")]
         backtrace: Backtrace,
     },
 
@@ -15,6 +17,7 @@ pub enum ParseError {
     Xml {
         #[from]
         source: roxmltree::Error,
+        #[cfg(feature = "backtrace")]
         backtrace: Backtrace,
     },
 
@@ -22,6 +25,7 @@ pub enum ParseError {
     UnexpectedElement {
         element: String,
         pos: ParseErrorPos,
+        #[cfg(feature = "backtrace")]
         backtrace: Backtrace,
     },
     #[error("Missing attribute {attribute} in element {element} at position {pos}")]
@@ -29,12 +33,14 @@ pub enum ParseError {
         attribute: String,
         element: String,
         pos: ParseErrorPos,
+        #[cfg(feature = "backtrace")]
         backtrace: Backtrace,
     },
     #[error("Unexpected node of type {node_type} at position {pos}")]
     UnexpectedNodeType {
         node_type: String,
         pos: ParseErrorPos,
+        #[cfg(feature = "backtrace")]
         backtrace: Backtrace,
     },
 
@@ -42,24 +48,28 @@ pub enum ParseError {
     UnrecognizedBmlType {
         bml_type: String,
         pos: ParseErrorPos,
+        #[cfg(feature = "backtrace")]
         backtrace: Backtrace,
     },
     #[error("Unrecognized direction type {dir_type} at position {pos}")]
     UnrecognizedDirectionType {
         dir_type: String,
         pos: ParseErrorPos,
+        #[cfg(feature = "backtrace")]
         backtrace: Backtrace,
     },
     #[error("Unrecognized speed type {speed_type} at position {pos}")]
     UnrecognizedSpeedType {
         speed_type: String,
         pos: ParseErrorPos,
+        #[cfg(feature = "backtrace")]
         backtrace: Backtrace,
     },
     #[error("Unrecognized acceleration direction type {accel_dir_type} at position {pos}")]
     UnrecognizedAccelDirType {
         accel_dir_type: String,
         pos: ParseErrorPos,
+        #[cfg(feature = "backtrace")]
         backtrace: Backtrace,
     },
 
@@ -67,6 +77,7 @@ pub enum ParseError {
     Expression {
         source: fasteval::Error,
         pos: ParseErrorPos,
+        #[cfg(feature = "backtrace")]
         backtrace: Backtrace,
     },
 
@@ -74,6 +85,7 @@ pub enum ParseError {
     Internal {
         #[from]
         source: Box<dyn std::error::Error>,
+        #[cfg(feature = "backtrace")]
         backtrace: Backtrace,
     },
 }
