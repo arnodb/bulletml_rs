@@ -2,6 +2,7 @@
 name = "bulletml"
 version = "0.1.0"
 authors = ["Arnaud de Bossoreille <arnaud.debossoreille@gmail.com>"]
+edition = "2018"
 
 [dependencies]
 failure = "0.1"
