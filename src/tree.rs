@@ -1,5 +1,4 @@
 use indextree::{Arena, NodeId};
-use meval::Expr;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -17,7 +16,7 @@ pub enum BulletMLNode {
 
     Accel,
 
-    Wait(Expr),
+    Wait(fasteval::ExpressionI),
 
     Vanish,
 
@@ -25,32 +24,32 @@ pub enum BulletMLNode {
 
     Direction {
         dir_type: Option<DirectionType>,
-        dir: Expr,
+        dir: fasteval::ExpressionI,
     },
 
     Speed {
         spd_type: Option<SpeedType>,
-        spd: Expr,
+        spd: fasteval::ExpressionI,
     },
 
     Horizontal {
         h_type: HVType,
-        h: Expr,
+        h: fasteval::ExpressionI,
     },
     Vertical {
         v_type: HVType,
-        v: Expr,
+        v: fasteval::ExpressionI,
     },
 
-    Term(Expr),
+    Term(fasteval::ExpressionI),
 
-    Times(Expr),
+    Times(fasteval::ExpressionI),
 
     BulletRef(String),
     ActionRef(String),
     FireRef(String),
 
-    Param(Expr),
+    Param(fasteval::ExpressionI),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -170,4 +169,5 @@ pub struct BulletML {
     pub bullet_refs: HashMap<String, NodeId>,
     pub action_refs: HashMap<String, NodeId>,
     pub fire_refs: HashMap<String, NodeId>,
+    pub expr_slab: fasteval::Slab,
 }
