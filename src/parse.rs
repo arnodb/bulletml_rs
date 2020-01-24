@@ -1,7 +1,6 @@
 use crate::errors::{ParseError, ParseErrorKind, ParseErrorPos};
 use failure::{Fail, ResultExt};
 use indextree::{Arena, NodeId};
-use meval::Expr;
 use roxmltree::TextPos;
 use std::collections::HashMap;
 use std::fs;
@@ -15,28 +14,47 @@ pub struct BulletMLParser {
     bullet_refs: HashMap<String, NodeId>,
     action_refs: HashMap<String, NodeId>,
     fire_refs: HashMap<String, NodeId>,
+    expr_parser: fasteval::Parser,
+    expr_slab: fasteval::Slab,
 }
 
 impl BulletMLParser {
-    pub fn parse(s: &str) -> Result<BulletML, ParseError> {
-        let doc = roxmltree::Document::parse(s).context(ParseErrorKind::Xml)?;
-        let mut parser = BulletMLParser {
+    pub fn new() -> Self {
+        BulletMLParser {
             arena: Arena::new(),
             bullet_refs: HashMap::new(),
             action_refs: HashMap::new(),
             fire_refs: HashMap::new(),
-        };
+            expr_parser: fasteval::Parser::new(),
+            expr_slab: fasteval::Slab::new(),
+        }
+    }
+
+    pub fn with_capacities(refs_capacity: usize, expr_capacity: usize) -> Self {
+        BulletMLParser {
+            arena: Arena::new(),
+            bullet_refs: HashMap::with_capacity(refs_capacity),
+            action_refs: HashMap::with_capacity(refs_capacity),
+            fire_refs: HashMap::with_capacity(refs_capacity),
+            expr_parser: fasteval::Parser::new(),
+            expr_slab: fasteval::Slab::with_capacity(expr_capacity),
+        }
+    }
+
+    pub fn parse(mut self, s: &str) -> Result<BulletML, ParseError> {
+        let doc = roxmltree::Document::parse(s).context(ParseErrorKind::Xml)?;
         let root = doc.root_element();
         let root_name = root.tag_name();
         match root_name.name() {
             "bulletml" => {
-                let root_id = parser.parse_bulletml(root)?;
+                let root_id = self.parse_bulletml(root)?;
                 Ok(BulletML {
-                    arena: parser.arena,
+                    arena: self.arena,
                     root: root_id,
-                    bullet_refs: parser.bullet_refs,
-                    action_refs: parser.action_refs,
-                    fire_refs: parser.fire_refs,
+                    bullet_refs: self.bullet_refs,
+                    action_refs: self.action_refs,
+                    fire_refs: self.fire_refs,
+                    expr_slab: self.expr_slab,
                 })
             }
             name => Err(ParseError::from(ParseErrorKind::UnexpectedElement {
@@ -46,12 +64,12 @@ impl BulletMLParser {
         }
     }
 
-    pub fn parse_file(path: &path::Path) -> Result<BulletML, ParseError> {
+    pub fn parse_file(self, path: &path::Path) -> Result<BulletML, ParseError> {
         let mut file = fs::File::open(&path).context(ParseErrorKind::FileOpen)?;
         let mut text = String::new();
         file.read_to_string(&mut text)
             .context(ParseErrorKind::FileRead)?;
-        BulletMLParser::parse(&text)
+        self.parse(&text)
     }
 
     fn parse_bulletml(&mut self, bulletml: roxmltree::Node) -> Result<NodeId, ParseError> {
@@ -456,7 +474,10 @@ impl BulletMLParser {
         Ok(id)
     }
 
-    fn parse_expression(&self, parent: roxmltree::Node) -> Result<Expr, ParseError> {
+    fn parse_expression(
+        &mut self,
+        parent: roxmltree::Node,
+    ) -> Result<fasteval::ExpressionI, ParseError> {
         let mut str: String = String::new();
         for child in parent.children() {
             let node_type = child.node_type();
@@ -473,15 +494,29 @@ impl BulletMLParser {
                 roxmltree::NodeType::Comment | roxmltree::NodeType::PI => {}
             }
         }
-        str = str.replace("$rand", "rand(0)");
-        str = str.replace("$rank", "rank");
-        str = str.replace("$", "v");
-        let expr = str.parse::<Expr>().map_err(|err| {
-            ParseError::from(err.context(ParseErrorKind::Expression {
-                pos: BulletMLParser::node_pos(parent.first_child().as_ref().unwrap_or(&parent)),
-            }))
-        })?;
-        Ok(expr)
+        let re = regex::Regex::new("\\$([0-9]+|rank|rand)").unwrap();
+        let str = re.replace_all(&str, |captures: &regex::Captures| match &captures[1] {
+            "rank" => "rank".to_string(),
+            "rand" => "rand()".to_string(),
+            v => {
+                let maybe_num = v.parse::<u8>();
+                match maybe_num {
+                    Ok(num) => format!("v({})", num),
+                    Err(..) => {
+                        panic!("Unrecognized variable pattern ${}", v);
+                    }
+                }
+            }
+        });
+        let expr_ref = self
+            .expr_parser
+            .parse_noclear(&str, &mut self.expr_slab.ps)
+            .map_err(|err| {
+                ParseError::from(err.context(ParseErrorKind::Expression {
+                    pos: BulletMLParser::node_pos(parent.first_child().as_ref().unwrap_or(&parent)),
+                }))
+            })?;
+        Ok(expr_ref)
     }
 
     #[inline]
@@ -497,13 +532,20 @@ impl BulletMLParser {
     }
 }
 
+impl Default for BulletMLParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[test]
 fn test_bulletml() {
-    let bml = BulletMLParser::parse(
-        r##"<?xml version="1.0" ?>
+    let bml = BulletMLParser::new()
+        .parse(
+            r##"<?xml version="1.0" ?>
 <bulletml />"##,
-    )
-    .unwrap();
+        )
+        .unwrap();
     assert_matches!(
         &bml.arena[bml.root].data,
         &BulletMLNode::BulletML { bml_type: None }
@@ -512,11 +554,12 @@ fn test_bulletml() {
 
 #[test]
 fn test_bulletml_type_none() {
-    let bml = BulletMLParser::parse(
-        r##"<?xml version="1.0" ?>
+    let bml = BulletMLParser::new()
+        .parse(
+            r##"<?xml version="1.0" ?>
 <bulletml type="none" />"##,
-    )
-    .unwrap();
+        )
+        .unwrap();
     assert_matches!(
         &bml.arena[bml.root].data,
         &BulletMLNode::BulletML { bml_type: None }
@@ -525,11 +568,12 @@ fn test_bulletml_type_none() {
 
 #[test]
 fn test_bulletml_type_vertical() {
-    let bml = BulletMLParser::parse(
-        r##"<?xml version="1.0" ?>
+    let bml = BulletMLParser::new()
+        .parse(
+            r##"<?xml version="1.0" ?>
 <bulletml type="vertical" />"##,
-    )
-    .unwrap();
+        )
+        .unwrap();
     assert_matches!(
         &bml.arena[bml.root].data,
         &BulletMLNode::BulletML {
@@ -540,11 +584,12 @@ fn test_bulletml_type_vertical() {
 
 #[test]
 fn test_bulletml_type_horizontal() {
-    let bml = BulletMLParser::parse(
-        r##"<?xml version="1.0" ?>
+    let bml = BulletMLParser::new()
+        .parse(
+            r##"<?xml version="1.0" ?>
 <bulletml type="horizontal" />"##,
-    )
-    .unwrap();
+        )
+        .unwrap();
     assert_matches!(
         &bml.arena[bml.root].data,
         &BulletMLNode::BulletML {
@@ -556,8 +601,9 @@ fn test_bulletml_type_horizontal() {
 #[test]
 fn test_full_bulletml() {
     // This covers all the good branches of the parser.
-    BulletMLParser::parse(
-        r##"<?xml version="1.0" ?>
+    BulletMLParser::new()
+        .parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet label="b1">
         <direction>0</direction>
@@ -615,13 +661,13 @@ fn test_full_bulletml() {
         <actionRef label="a1" />
     </bullet>
 </bulletml>"##,
-    )
-    .unwrap();
+        )
+        .unwrap();
 }
 
 #[test]
 fn test_unexpected_root() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <foo />"##,
     );
@@ -636,7 +682,7 @@ fn test_unexpected_root() {
 
 #[test]
 fn test_unrecognized_bml_type() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml type="foo" />"##,
     );
@@ -651,7 +697,7 @@ fn test_unrecognized_bml_type() {
 
 #[test]
 fn test_unexpected_bulletml_child() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <foo />
@@ -668,7 +714,7 @@ fn test_unexpected_bulletml_child() {
 
 #[test]
 fn test_unexpected_bullet_child() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet>
@@ -687,7 +733,7 @@ fn test_unexpected_bullet_child() {
 
 #[test]
 fn test_unexpected_action_child() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
@@ -706,7 +752,7 @@ fn test_unexpected_action_child() {
 
 #[test]
 fn test_unexpected_fire_child() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <fire>
@@ -725,7 +771,7 @@ fn test_unexpected_fire_child() {
 
 #[test]
 fn test_unexpected_change_direction_child() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
@@ -746,7 +792,7 @@ fn test_unexpected_change_direction_child() {
 
 #[test]
 fn test_unexpected_change_speed_child() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
@@ -767,7 +813,7 @@ fn test_unexpected_change_speed_child() {
 
 #[test]
 fn test_unexpected_accel_child() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
@@ -788,7 +834,7 @@ fn test_unexpected_accel_child() {
 
 #[test]
 fn test_unexpected_repeat_child() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
@@ -809,7 +855,7 @@ fn test_unexpected_repeat_child() {
 
 #[test]
 fn test_unrecognized_direction_type() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet>
@@ -828,7 +874,7 @@ fn test_unrecognized_direction_type() {
 
 #[test]
 fn test_unrecognized_speed_type() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet>
@@ -847,7 +893,7 @@ fn test_unrecognized_speed_type() {
 
 #[test]
 fn test_unrecognized_accel_horizontal_type() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
@@ -868,7 +914,7 @@ fn test_unrecognized_accel_horizontal_type() {
 
 #[test]
 fn test_unrecognized_accel_vertical_type() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
@@ -889,7 +935,7 @@ fn test_unrecognized_accel_vertical_type() {
 
 #[test]
 fn test_missing_bullet_ref_label() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <fire>
@@ -909,7 +955,7 @@ fn test_missing_bullet_ref_label() {
 
 #[test]
 fn test_unexpected_bullet_ref_child() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <fire>
@@ -930,7 +976,7 @@ fn test_unexpected_bullet_ref_child() {
 
 #[test]
 fn test_missing_action_ref_label() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet>
@@ -950,7 +996,7 @@ fn test_missing_action_ref_label() {
 
 #[test]
 fn test_unexpected_action_ref_child() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet>
@@ -971,7 +1017,7 @@ fn test_unexpected_action_ref_child() {
 
 #[test]
 fn test_missing_fire_ref_label() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
@@ -991,7 +1037,7 @@ fn test_missing_fire_ref_label() {
 
 #[test]
 fn test_unexpected_fire_ref_child() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
@@ -1012,7 +1058,7 @@ fn test_unexpected_fire_ref_child() {
 
 #[test]
 fn test_unexpected_node_type_in_expression() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet>
@@ -1031,7 +1077,7 @@ fn test_unexpected_node_type_in_expression() {
 
 #[test]
 fn test_expression_error() {
-    let bml = BulletMLParser::parse(
+    let bml = BulletMLParser::new().parse(
         r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet>
@@ -1046,11 +1092,9 @@ fn test_expression_error() {
             pos: ParseErrorPos { row: 4, col: 20 }
         }
     );
-    let cause = err.cause().unwrap().downcast_ref::<meval::Error>();
-    assert_eq!(
+    let cause = err.cause().unwrap().downcast_ref::<fasteval::Error>();
+    assert_matches!(
         cause,
-        Some(&meval::Error::ParseError(
-            meval::ParseError::MissingArgument
-        ))
+        Some(&fasteval::Error::EofWhileParsing(ref s)) if s.as_str() == "value"
     );
 }

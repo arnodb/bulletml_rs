@@ -1,6 +1,4 @@
 use indextree::{Node, NodeId};
-use meval::{Context, Expr};
-use std::cell::RefCell;
 use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
 
@@ -412,7 +410,7 @@ impl RunnerImpl {
                 BulletMLNode::ChangeDirection => self.run_change_direction(data, runner),
                 BulletMLNode::ChangeSpeed => self.run_change_speed(data, runner),
                 BulletMLNode::Accel => self.run_accel(data, runner),
-                BulletMLNode::Wait(expr) => self.run_wait(expr, data, runner),
+                BulletMLNode::Wait(expr) => self.run_wait(*expr, data, runner),
                 BulletMLNode::Repeat => self.run_repeat(act, data, runner),
                 BulletMLNode::BulletRef(label) => {
                     self.run_ref(bml.bullet_refs[label], data, runner)
@@ -529,7 +527,7 @@ impl RunnerImpl {
     fn get_direction<D>(
         &mut self,
         dir_type: Option<DirectionType>,
-        expr: &Expr,
+        expr: fasteval::ExpressionI,
         data: &mut RunnerData<D>,
         runner: &dyn AppRunner<D>,
     ) -> f64 {
@@ -574,7 +572,7 @@ impl RunnerImpl {
             for child in act.children(&data.bml.arena) {
                 let child_node = &data.bml.arena[child];
                 if let BulletMLNode::Direction { dir_type, dir } = &child_node.data {
-                    let direction = self.get_direction(*dir_type, dir, data, runner);
+                    let direction = self.get_direction(*dir_type, *dir, data, runner);
                     self.dir.set(direction);
                     break;
                 }
@@ -585,7 +583,7 @@ impl RunnerImpl {
     fn get_speed<D>(
         &mut self,
         spd_type: Option<SpeedType>,
-        expr: &Expr,
+        expr: fasteval::ExpressionI,
         data: &mut RunnerData<D>,
         runner: &dyn AppRunner<D>,
     ) -> f64 {
@@ -611,7 +609,7 @@ impl RunnerImpl {
             for child in act.children(&data.bml.arena) {
                 let child_node = &data.bml.arena[child];
                 if let BulletMLNode::Speed { spd_type, spd } = &child_node.data {
-                    let speed = self.get_speed(*spd_type, spd, data, runner);
+                    let speed = self.get_speed(*spd_type, *spd, data, runner);
                     self.spd.set(speed);
                     break;
                 }
@@ -669,7 +667,12 @@ impl RunnerImpl {
         self.act = node.first_child();
     }
 
-    fn run_wait<D>(&mut self, expr: &Expr, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
+    fn run_wait<D>(
+        &mut self,
+        expr: fasteval::ExpressionI,
+        data: &mut RunnerData<D>,
+        runner: &dyn AppRunner<D>,
+    ) {
         let frame = self.get_number_contents(expr, data, runner);
         self.do_wait(frame as u32);
         self.act = None;
@@ -680,7 +683,7 @@ impl RunnerImpl {
         for child in act.children(&data.bml.arena) {
             let child_node = &data.bml.arena[child];
             if let BulletMLNode::Times(expr) = &child_node.data {
-                times = Some(self.get_number_contents(expr, data, runner) as usize);
+                times = Some(self.get_number_contents(*expr, data, runner) as usize);
                 break;
             }
         }
@@ -730,11 +733,11 @@ impl RunnerImpl {
                 ..
             }) = &direction_node
             {
-                let term = self.get_number_contents(term, data, runner) as u32;
+                let term = self.get_number_contents(*term, data, runner) as u32;
                 let (dir, seq) = if let Some(DirectionType::Sequence) = dir_type {
-                    (self.get_number_contents(dir, data, runner), true)
+                    (self.get_number_contents(*dir, data, runner), true)
                 } else {
-                    (self.get_direction(*dir_type, dir, data, runner), false)
+                    (self.get_direction(*dir_type, *dir, data, runner), false)
                 };
                 self.calc_change_direction(dir, term, seq, data, runner);
             }
@@ -798,12 +801,12 @@ impl RunnerImpl {
                 ..
             }) = &speed_node
             {
-                let term = self.get_number_contents(term, data, runner) as u32;
+                let term = self.get_number_contents(*term, data, runner) as u32;
                 let spd = if let Some(SpeedType::Sequence) = spd_type {
-                    self.get_number_contents(spd, data, runner) * f64::from(term)
+                    self.get_number_contents(*spd, data, runner) * f64::from(term)
                         + runner.get_bullet_speed(data.data)
                 } else {
-                    self.get_speed(*spd_type, spd, data, runner)
+                    self.get_speed(*spd_type, *spd, data, runner)
                 };
                 self.calc_change_speed(spd, term, data, runner);
             }
@@ -833,7 +836,7 @@ impl RunnerImpl {
             ..
         }) = &term_node
         {
-            let term = self.get_number_contents(term, data, runner) as u32;
+            let term = self.get_number_contents(*term, data, runner) as u32;
             let h_node = RunnerImpl::get_first_child_matching(
                 data.bml,
                 self.act,
@@ -851,7 +854,7 @@ impl RunnerImpl {
                 {
                     self.accel_x = self.calc_accel_xy(
                         runner.get_bullet_speed_x(),
-                        self.get_number_contents(v, data, runner),
+                        self.get_number_contents(*v, data, runner),
                         term,
                         *v_type,
                     );
@@ -863,7 +866,7 @@ impl RunnerImpl {
                 {
                     self.accel_y = self.calc_accel_xy(
                         runner.get_bullet_speed_y(),
-                        self.get_number_contents(h, data, runner),
+                        self.get_number_contents(*h, data, runner),
                         term,
                         *h_type,
                     );
@@ -876,7 +879,7 @@ impl RunnerImpl {
                 {
                     self.accel_x = self.calc_accel_xy(
                         runner.get_bullet_speed_x(),
-                        self.get_number_contents(h, data, runner),
+                        self.get_number_contents(*h, data, runner),
                         term,
                         *h_type,
                     );
@@ -888,7 +891,7 @@ impl RunnerImpl {
                 {
                     self.accel_y = self.calc_accel_xy(
                         runner.get_bullet_speed_y(),
-                        self.get_number_contents(v, data, runner),
+                        self.get_number_contents(*v, data, runner),
                         term,
                         *v_type,
                     );
@@ -926,7 +929,7 @@ impl RunnerImpl {
         for child in children {
             let child_node = &data.bml.arena[child];
             if let BulletMLNode::Param(expr) = &child_node.data {
-                parameters.push(self.get_number_contents(expr, data, runner));
+                parameters.push(self.get_number_contents(*expr, data, runner));
             }
         }
         parameters
@@ -934,19 +937,24 @@ impl RunnerImpl {
 
     fn get_number_contents<D>(
         &self,
-        expr: &Expr,
+        expr: fasteval::ExpressionI,
         data: &mut RunnerData<D>,
         runner: &dyn AppRunner<D>,
     ) -> f64 {
-        let rank = runner.get_rank(data.data);
-        let data_cell = RefCell::new(&mut data.data);
-        let mut ctx = Context::new();
-        ctx.func("rand", |_x| runner.get_rand(&mut data_cell.borrow_mut()));
-        ctx.var("rank", rank);
-        for (index, param) in self.parameters.iter().enumerate() {
-            ctx.var(format!("v{}", index + 1), *param);
-        }
-        expr.eval_with_context(ctx).unwrap()
+        let rank = runner.get_rank(&data.data);
+        let expr_ref = expr.from(&data.bml.expr_slab.ps);
+        use fasteval::Evaler;
+        expr_ref
+            .eval(
+                &data.bml.expr_slab,
+                &mut ExprNamespace {
+                    rank,
+                    vars: &self.parameters,
+                    data,
+                    runner,
+                },
+            )
+            .unwrap()
     }
 }
 
@@ -955,6 +963,24 @@ struct RepeatElem {
     iter: usize,
     end: usize,
     act: NodeId,
+}
+
+struct ExprNamespace<'a, 'd, D> {
+    rank: f64,
+    vars: &'a Vec<f64>,
+    data: &'a mut RunnerData<'d, D>,
+    runner: &'a dyn AppRunner<D>,
+}
+
+impl<'a, 'd, D> fasteval::EvalNamespace for ExprNamespace<'a, 'd, D> {
+    fn lookup(&mut self, name: &str, args: Vec<f64>, _keybuf: &mut String) -> Option<f64> {
+        match (name, args.as_slice()) {
+            ("v", &[i]) => Some(self.vars[i as usize - 1]),
+            ("rank", &[]) => Some(self.rank),
+            ("rand", &[]) => Some(self.runner.get_rand(self.data.data)),
+            _ => panic!("Eval {}, {:?}", name, &args),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1169,8 +1195,9 @@ mod test_runner {
 
     #[test]
     fn test_mini() {
-        let bml = BulletMLParser::parse(
-            r##"<?xml version="1.0" ?>
+        let bml = BulletMLParser::new()
+            .parse(
+                r##"<?xml version="1.0" ?>
 <!DOCTYPE bulletml SYSTEM "../../bulletml.dtd">
 <bulletml>
 <action label="top">
@@ -1179,8 +1206,8 @@ mod test_runner {
     </fire>
 </action>
 </bulletml>"##,
-        )
-        .unwrap();
+            )
+            .unwrap();
         let mut manager = TestManager::new(bml);
         let mut logs = Vec::new();
         manager.run_test(100, &mut logs);
@@ -1194,8 +1221,9 @@ mod test_runner {
 
     #[test]
     fn test_mini_aim() {
-        let bml = BulletMLParser::parse(
-            r##"<?xml version="1.0" ?>
+        let bml = BulletMLParser::new()
+            .parse(
+                r##"<?xml version="1.0" ?>
 <!DOCTYPE bulletml SYSTEM "../../bulletml.dtd">
 <bulletml>
 <action label="top">
@@ -1213,8 +1241,8 @@ mod test_runner {
     </repeat>
 </action>
 </bulletml>"##,
-        )
-        .unwrap();
+            )
+            .unwrap();
         let mut manager = TestManager::new(bml);
         let mut logs = Vec::new();
         manager.run_test(110000, &mut logs);
@@ -1226,7 +1254,7 @@ mod test_runner {
             logs[0].assert_log(r#"Fire(None)"#, 1);
             logs[0].assert_log(r#"Bullet(None)"#, 1);
             logs[0].assert_log(r#"create_simple_bullet(0, 1)"#, 1);
-            logs[0].assert_log(r#"Wait(Expr { rpn: [Number(100.0)] })"#, 1);
+            logs[0].assert_log(r#"Wait(ExpressionI(3))"#, 1);
             for j in 0..100 {
                 logs[0].assert_log(&format!(r#"=== {}"#, i * 100 + j + 1), 1);
             }
@@ -1235,8 +1263,9 @@ mod test_runner {
 
     #[test]
     fn test_bulletsmorph_double_seduction() {
-        let bml = BulletMLParser::parse(
-            r##"<?xml version="1.0" ?>
+        let bml = BulletMLParser::with_capacities(12, 128)
+            .parse(
+                r##"<?xml version="1.0" ?>
     <!DOCTYPE bulletml SYSTEM "../bulletml.dtd">
     <bulletml type="vertical" xmlns="http://www.asahi-net.or.jp/~cs8k-cyu/bulletml">
     <action label="top">
@@ -1362,8 +1391,8 @@ mod test_runner {
         </action>
     </bullet>
     </bulletml>"##,
-        )
-        .unwrap();
+            )
+            .unwrap();
         let mut manager = TestManager::new(bml);
         let mut logs = Vec::new();
         manager.run_test(1000, &mut logs);
@@ -1377,7 +1406,7 @@ mod test_runner {
         logs[0].assert_log(r#"BulletRef("parentbit")"#, 1);
         logs[0].assert_log(r#"Bullet(Some("parentbit"))"#, 1);
         logs[0].assert_log(r#"create_bullet(330, 2)"#, 1);
-        logs[0].assert_log(r#"Wait(Expr { rpn: [Number(300.0)] })"#, 1);
+        logs[0].assert_log(r#"Wait(ExpressionI(4))"#, 1);
         for i in 0..300 {
             logs[0].assert_log(&format!(r#"=== {}"#, i + 1), 1);
         }
@@ -1394,7 +1423,7 @@ mod test_runner {
                     logs[i].assert_log(r#"Bullet(Some("aimbit"))"#, 1);
                     logs[i].assert_log(&format!(r#"create_bullet({}, 0.6)"#, k * 90 % 360), 1);
                 }
-                logs[i].assert_log(r#"Wait(Expr { rpn: [Number(5.0)] })"#, 1);
+                logs[i].assert_log(r#"Wait(ExpressionI(55))"#, 1);
                 for k in 0..5 {
                     logs[i].assert_log(&format!(r#"=== {}"#, j * 5 + k + 2), 1);
                 }
@@ -1410,7 +1439,7 @@ mod test_runner {
             let mut spd = 1.6;
             for j in 0..1 {
                 logs[i].assert_log(r#"Action(None)"#, 1);
-                logs[i].assert_log(r#"Wait(Expr { rpn: [Var("v1")] })"#, 1);
+                logs[i].assert_log(r#"Wait(ExpressionI(58))"#, 1);
                 for k in 0..v1s[(i - 3) / 8 % 12] {
                     logs[i].assert_log(&format!(r#"=== {}"#, (i - 3) / 8 * 5 + k + 3), 1);
                 }
@@ -1443,8 +1472,9 @@ mod test_runner {
 
     #[test]
     fn test_tt_morph_0to1() {
-        let bml = BulletMLParser::parse(
-            r##"<?xml version="1.0" ?>
+        let bml = BulletMLParser::new()
+            .parse(
+                r##"<?xml version="1.0" ?>
 <!DOCTYPE bulletml SYSTEM "http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/bulletml.dtd">
 
 <bulletml type="vertical"
@@ -1468,19 +1498,19 @@ mod test_runner {
 </action>
 
 </bulletml>"##,
-        )
-        .unwrap();
+            )
+            .unwrap();
         let mut manager = TestManager::new(bml);
         let mut logs = Vec::new();
         manager.run_test(100, &mut logs);
         logs[0].assert_log(r#"=== 0"#, 1);
         logs[0].assert_log(r#"Action(Some("top"))"#, 1);
         logs[0].assert_log(r#"ChangeSpeed"#, 1);
-        logs[0].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[0].assert_log(r#"Wait(ExpressionI(2))"#, 1);
         logs[0].assert_log(r#"=== 1"#, 1);
         logs[0].assert_log(r#"do_change_speed(0)"#, 1);
         logs[0].assert_log(r#"ChangeSpeed"#, 1);
-        logs[0].assert_log(r#"Wait(Expr { rpn: [Number(60.0), Var("rank"), Number(50.0), Binary(Times), Binary(Minus)] })"#, 1);
+        logs[0].assert_log(r#"Wait(ExpressionI(5))"#, 1);
         logs[0].assert_log(r#"=== 2"#, 1);
         logs[0].assert_log(r#"do_change_speed(1)"#, 1);
         logs[0].assert_log(r#"=== 3"#, 1);
@@ -1509,8 +1539,9 @@ mod test_runner {
 
     #[test]
     fn test_tt_morph_accelshot() {
-        let bml = BulletMLParser::parse(
-            r##"<?xml version="1.0" ?>
+        let bml = BulletMLParser::new()
+            .parse(
+                r##"<?xml version="1.0" ?>
 <!DOCTYPE bulletml SYSTEM "http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/bulletml.dtd">
 
 <bulletml type="vertical"
@@ -1546,8 +1577,8 @@ mod test_runner {
 </bullet>
 
 </bulletml>"##,
-        )
-        .unwrap();
+            )
+            .unwrap();
         let mut manager = TestManager::new(bml);
         let mut logs = Vec::new();
         manager.run_test(100, &mut logs);
@@ -1559,7 +1590,7 @@ mod test_runner {
         logs[0].assert_log(r#"create_bullet(0, 0.09999999999999998)"#, 1);
         logs[0].assert_log(r#"Repeat"#, 1);
         logs[0].assert_log(r#"Action(None)"#, 1);
-        logs[0].assert_log(r#"Wait(Expr { rpn: [Number(2.0)] })"#, 1);
+        logs[0].assert_log(r#"Wait(ExpressionI(3))"#, 1);
         logs[0].assert_log(r#"=== 1"#, 1);
         logs[0].assert_log(r#"=== 2"#, 1);
         logs[0].assert_log(r#"Fire(None)"#, 1);
@@ -1571,7 +1602,7 @@ mod test_runner {
 
         logs[1].assert_log(r#"=== 1"#, 1);
         logs[1].assert_log(r#"Action(None)"#, 1);
-        logs[1].assert_log(r#"Wait(Expr { rpn: [Number(3.0)] })"#, 1);
+        logs[1].assert_log(r#"Wait(ExpressionI(6))"#, 1);
         logs[1].assert_log(r#"=== 2"#, 1);
         logs[1].assert_log(r#"=== 3"#, 1);
         logs[1].assert_log(r#"=== 4"#, 1);
@@ -1583,7 +1614,7 @@ mod test_runner {
 
         logs[2].assert_log(r#"=== 3"#, 1);
         logs[2].assert_log(r#"Action(None)"#, 1);
-        logs[2].assert_log(r#"Wait(Expr { rpn: [Number(3.0)] })"#, 1);
+        logs[2].assert_log(r#"Wait(ExpressionI(6))"#, 1);
         logs[2].assert_log(r#"=== 4"#, 1);
         logs[2].assert_log(r#"=== 5"#, 1);
         logs[2].assert_log(r#"=== 6"#, 1);
@@ -1596,8 +1627,9 @@ mod test_runner {
 
     #[test]
     fn test_tt_morph_twin() {
-        let bml = BulletMLParser::parse(
-            r##"<?xml version="1.0" ?>
+        let bml = BulletMLParser::new()
+            .parse(
+                r##"<?xml version="1.0" ?>
 <!DOCTYPE bulletml SYSTEM "http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/bulletml.dtd">
 
 <bulletml type="vertical"
@@ -1647,14 +1679,14 @@ mod test_runner {
 </action>
 
 </bulletml>"##,
-        )
-        .unwrap();
+            )
+            .unwrap();
         let mut manager = TestManager::new(bml);
         let mut logs = Vec::new();
         manager.run_test(100, &mut logs);
         logs[0].assert_log(r#"=== 0"#, 1);
         logs[0].assert_log(r#"Action(Some("top"))"#, 1);
-        logs[0].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[0].assert_log(r#"Wait(ExpressionI(0))"#, 1);
         logs[0].assert_log(r#"=== 1"#, 1);
         logs[0].assert_log(r#"Fire(None)"#, 1);
         logs[0].assert_log(r#"Bullet(None)"#, 1);
@@ -1669,11 +1701,11 @@ mod test_runner {
         logs[1].assert_log(r#"ActionRef("ofs")"#, 1);
         logs[1].assert_log(r#"Action(Some("ofs"))"#, 1);
         logs[1].assert_log(r#"ChangeDirection"#, 1);
-        logs[1].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[1].assert_log(r#"Wait(ExpressionI(10))"#, 1);
         logs[1].assert_log(r#"=== 3"#, 1);
         logs[1].assert_log(r#"do_change_direction(90)"#, 1);
         logs[1].assert_log(r#"ChangeDirection"#, 1);
-        logs[1].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[1].assert_log(r#"Wait(ExpressionI(14))"#, 1);
         logs[1].assert_log(r#"=== 4"#, 1);
         logs[1].assert_log(r#"do_change_direction(-90)"#, 1);
         logs[1].assert_log(r#"Fire(None)"#, 1);
@@ -1686,11 +1718,11 @@ mod test_runner {
         logs[2].assert_log(r#"ActionRef("ofs")"#, 1);
         logs[2].assert_log(r#"Action(Some("ofs"))"#, 1);
         logs[2].assert_log(r#"ChangeDirection"#, 1);
-        logs[2].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[2].assert_log(r#"Wait(ExpressionI(10))"#, 1);
         logs[2].assert_log(r#"=== 3"#, 1);
         logs[2].assert_log(r#"do_change_direction(-90)"#, 1);
         logs[2].assert_log(r#"ChangeDirection"#, 1);
-        logs[2].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[2].assert_log(r#"Wait(ExpressionI(14))"#, 1);
         logs[2].assert_log(r#"=== 4"#, 1);
         logs[2].assert_log(r#"do_change_direction(90)"#, 1);
         logs[2].assert_log(r#"Fire(None)"#, 1);
@@ -1702,8 +1734,9 @@ mod test_runner {
 
     #[test]
     fn test_tt_morph_wedge_half() {
-        let bml = BulletMLParser::parse(
-            r##"<?xml version="1.0" ?>
+        let bml = BulletMLParser::new()
+            .parse(
+                r##"<?xml version="1.0" ?>
 <!DOCTYPE bulletml SYSTEM "http://www.asahi-net.or.jp/~cs8k-cyu/bulletml/bulletml.dtd">
 
 <bulletml type="vertical"
@@ -1754,14 +1787,14 @@ mod test_runner {
 </action>
 
 </bulletml>"##,
-        )
-        .unwrap();
+            )
+            .unwrap();
         let mut manager = TestManager::new(bml);
         let mut logs = Vec::new();
         manager.run_test(100, &mut logs);
         logs[0].assert_log(r#"=== 0"#, 1);
         logs[0].assert_log(r#"Action(Some("top"))"#, 1);
-        logs[0].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[0].assert_log(r#"Wait(ExpressionI(0))"#, 1);
         logs[0].assert_log(r#"=== 1"#, 1);
         logs[0].assert_log(r#"Fire(None)"#, 1);
         logs[0].assert_log(r#"Bullet(None)"#, 1);
@@ -1776,11 +1809,11 @@ mod test_runner {
         logs[1].assert_log(r#"ActionRef("ofs")"#, 1);
         logs[1].assert_log(r#"Action(Some("ofs"))"#, 1);
         logs[1].assert_log(r#"ChangeDirection"#, 1);
-        logs[1].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[1].assert_log(r#"Wait(ExpressionI(12))"#, 1);
         logs[1].assert_log(r#"=== 3"#, 1);
         logs[1].assert_log(r#"do_change_direction(0)"#, 1);
         logs[1].assert_log(r#"ChangeDirection"#, 1);
-        logs[1].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[1].assert_log(r#"Wait(ExpressionI(16))"#, 1);
         logs[1].assert_log(r#"=== 4"#, 1);
         logs[1].assert_log(r#"do_change_direction(0)"#, 1);
         logs[1].assert_log(r#"Fire(None)"#, 1);
@@ -1793,11 +1826,11 @@ mod test_runner {
         logs[2].assert_log(r#"ActionRef("ofs")"#, 1);
         logs[2].assert_log(r#"Action(Some("ofs"))"#, 1);
         logs[2].assert_log(r#"ChangeDirection"#, 1);
-        logs[2].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[2].assert_log(r#"Wait(ExpressionI(12))"#, 1);
         logs[2].assert_log(r#"=== 3"#, 1);
         logs[2].assert_log(r#"do_change_direction(-120)"#, 1);
         logs[2].assert_log(r#"ChangeDirection"#, 1);
-        logs[2].assert_log(r#"Wait(Expr { rpn: [Number(1.0)] })"#, 1);
+        logs[2].assert_log(r#"Wait(ExpressionI(16))"#, 1);
         logs[2].assert_log(r#"=== 4"#, 1);
         logs[2].assert_log(r#"do_change_direction(120)"#, 1);
         logs[2].assert_log(r#"Fire(None)"#, 1);
