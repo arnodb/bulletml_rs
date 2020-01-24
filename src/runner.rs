@@ -292,7 +292,7 @@ impl RunnerImpl {
             return;
         }
         self.changes(data, runner);
-        self.end_turn = runner.get_turn(&data.data);
+        self.end_turn = runner.get_turn(data.data);
         if self.act.is_none() {
             if !self.is_turn_end()
                 && self.change_dir.is_none()
@@ -306,7 +306,7 @@ impl RunnerImpl {
         }
         self.act = Some(self.nodes[self.act_iter]);
         if self.act_turn.is_none() {
-            self.act_turn = Some(runner.get_turn(&data.data));
+            self.act_turn = Some(runner.get_turn(data.data));
         }
         self.run_sub(data, runner);
         match self.act {
@@ -335,7 +335,7 @@ impl RunnerImpl {
     }
 
     fn changes<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
-        let now = runner.get_turn(&data.data);
+        let now = runner.get_turn(data.data);
         let reset = if let Some(change_dir) = &self.change_dir {
             if change_dir.is_last(now) {
                 runner.do_change_direction(&mut data.data, change_dir.get_last());
@@ -408,21 +408,19 @@ impl RunnerImpl {
             match &node.data {
                 BulletMLNode::Bullet { .. } => self.run_bullet(data, runner),
                 BulletMLNode::Action { .. } => self.run_action(node),
-                BulletMLNode::Fire { .. } => self.run_fire(bml, data, runner),
-                BulletMLNode::ChangeDirection => self.run_change_direction(bml, data, runner),
-                BulletMLNode::ChangeSpeed => self.run_change_speed(bml, data, runner),
-                BulletMLNode::Accel => self.run_accel(bml, data, runner),
+                BulletMLNode::Fire { .. } => self.run_fire(data, runner),
+                BulletMLNode::ChangeDirection => self.run_change_direction(data, runner),
+                BulletMLNode::ChangeSpeed => self.run_change_speed(data, runner),
+                BulletMLNode::Accel => self.run_accel(data, runner),
                 BulletMLNode::Wait(expr) => self.run_wait(expr, data, runner),
-                BulletMLNode::Repeat => self.run_repeat(bml, act, data, runner),
+                BulletMLNode::Repeat => self.run_repeat(act, data, runner),
                 BulletMLNode::BulletRef(label) => {
-                    self.run_ref(bml, bml.bullet_refs[label], data, runner)
+                    self.run_ref(bml.bullet_refs[label], data, runner)
                 }
                 BulletMLNode::ActionRef(label) => {
-                    self.run_ref(bml, bml.action_refs[label], data, runner)
+                    self.run_ref(bml.action_refs[label], data, runner)
                 }
-                BulletMLNode::FireRef(label) => {
-                    self.run_ref(bml, bml.fire_refs[label], data, runner)
-                }
+                BulletMLNode::FireRef(label) => self.run_ref(bml.fire_refs[label], data, runner),
                 BulletMLNode::Vanish => self.run_vanish(data, runner),
                 _ => (),
             }
@@ -548,7 +546,7 @@ impl RunnerImpl {
                 false,
             ),
             Some(DirectionType::Relative) => {
-                (direction + runner.get_bullet_direction(&data.data), false)
+                (direction + runner.get_bullet_direction(data.data), false)
             }
             Some(DirectionType::Sequence) => {
                 if !self.prev_dir.is_valid() {
@@ -559,7 +557,7 @@ impl RunnerImpl {
             }
         };
         if aim {
-            direction += runner.get_aim_direction(&data.data);
+            direction += runner.get_aim_direction(data.data);
         }
         while direction > 360. {
             direction -= 360.
@@ -571,15 +569,10 @@ impl RunnerImpl {
         direction
     }
 
-    fn set_direction<D>(
-        &mut self,
-        bml: &BulletML,
-        data: &mut RunnerData<D>,
-        runner: &dyn AppRunner<D>,
-    ) {
+    fn set_direction<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
         if let Some(act) = self.act {
-            for child in act.children(&bml.arena) {
-                let child_node = &bml.arena[child];
+            for child in act.children(&data.bml.arena) {
+                let child_node = &data.bml.arena[child];
                 if let BulletMLNode::Direction { dir_type, dir } = &child_node.data {
                     let direction = self.get_direction(*dir_type, dir, data, runner);
                     self.dir.set(direction);
@@ -600,7 +593,7 @@ impl RunnerImpl {
         speed = match spd_type {
             None => speed,
             Some(SpeedType::Absolute) => speed,
-            Some(SpeedType::Relative) => speed + runner.get_bullet_speed(&data.data),
+            Some(SpeedType::Relative) => speed + runner.get_bullet_speed(data.data),
             Some(SpeedType::Sequence) => {
                 if !self.prev_spd.is_valid() {
                     1.
@@ -613,15 +606,10 @@ impl RunnerImpl {
         speed
     }
 
-    fn set_speed<D>(
-        &mut self,
-        bml: &BulletML,
-        data: &mut RunnerData<D>,
-        runner: &dyn AppRunner<D>,
-    ) {
+    fn set_speed<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
         if let Some(act) = self.act {
-            for child in act.children(&bml.arena) {
-                let child_node = &bml.arena[child];
+            for child in act.children(&data.bml.arena) {
+                let child_node = &data.bml.arena[child];
                 if let BulletMLNode::Speed { spd_type, spd } = &child_node.data {
                     let speed = self.get_speed(*spd_type, spd, data, runner);
                     self.spd.set(speed);
@@ -633,15 +621,15 @@ impl RunnerImpl {
 
     fn run_bullet<D>(&mut self, data: &mut RunnerData<D>, runner: &mut dyn AppRunner<D>) {
         let bml = data.bml;
-        self.set_speed(bml, data, runner);
-        self.set_direction(bml, data, runner);
+        self.set_speed(data, runner);
+        self.set_direction(data, runner);
         if !self.spd.is_valid() {
             let default = runner.get_default_speed();
             self.spd.set(default);
             self.prev_spd.set(default);
         }
         if !self.dir.is_valid() {
-            let default = runner.get_aim_direction(&data.data);
+            let default = runner.get_aim_direction(data.data);
             self.dir.set(default);
             self.prev_dir.set(default);
         }
@@ -661,14 +649,19 @@ impl RunnerImpl {
         self.act = None;
     }
 
-    fn run_fire<D>(&mut self, bml: &BulletML, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
+    fn run_fire<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
         self.shot_init();
-        self.set_speed(bml, data, runner);
-        self.set_direction(bml, data, runner);
-        let bullet = RunnerImpl::get_first_child_matching(bml, self.act, BulletMLNode::is_bullet)
-            .or_else(|| {
-                RunnerImpl::get_first_child_matching(bml, self.act, BulletMLNode::is_bullet_ref)
-            });
+        self.set_speed(data, runner);
+        self.set_direction(data, runner);
+        let bullet =
+            RunnerImpl::get_first_child_matching(data.bml, self.act, BulletMLNode::is_bullet)
+                .or_else(|| {
+                    RunnerImpl::get_first_child_matching(
+                        data.bml,
+                        self.act,
+                        BulletMLNode::is_bullet_ref,
+                    )
+                });
         self.act = bullet;
     }
 
@@ -682,16 +675,10 @@ impl RunnerImpl {
         self.act = None;
     }
 
-    fn run_repeat<D>(
-        &mut self,
-        bml: &BulletML,
-        act: NodeId,
-        data: &mut RunnerData<D>,
-        runner: &dyn AppRunner<D>,
-    ) {
+    fn run_repeat<D>(&mut self, act: NodeId, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
         let mut times: Option<usize> = None;
-        for child in act.children(&bml.arena) {
-            let child_node = &bml.arena[child];
+        for child in act.children(&data.bml.arena) {
+            let child_node = &data.bml.arena[child];
             if let BulletMLNode::Times(expr) = &child_node.data {
                 times = Some(self.get_number_contents(expr, data, runner) as usize);
                 break;
@@ -699,10 +686,10 @@ impl RunnerImpl {
         }
         if let Some(times) = times {
             let action =
-                RunnerImpl::get_first_child_matching(bml, self.act, BulletMLNode::is_action)
+                RunnerImpl::get_first_child_matching(data.bml, self.act, BulletMLNode::is_action)
                     .or_else(|| {
                         RunnerImpl::get_first_child_matching(
-                            bml,
+                            data.bml,
                             self.act,
                             BulletMLNode::is_action_ref,
                         )
@@ -716,35 +703,28 @@ impl RunnerImpl {
         }
     }
 
-    fn run_ref<D>(
-        &mut self,
-        bml: &BulletML,
-        r: NodeId,
-        data: &mut RunnerData<D>,
-        runner: &dyn AppRunner<D>,
-    ) {
-        let new_parameters = self.get_parameters(bml, data, runner);
+    fn run_ref<D>(&mut self, r: NodeId, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
+        let new_parameters = self.get_parameters(data, runner);
         let prev_parameters = std::mem::replace(&mut self.parameters, new_parameters);
         self.ref_stack.push((self.act.unwrap(), prev_parameters));
         self.act = Some(r);
     }
 
-    fn run_change_direction<D>(
-        &mut self,
-        bml: &BulletML,
-        data: &mut RunnerData<D>,
-        runner: &dyn AppRunner<D>,
-    ) {
-        let term_node = RunnerImpl::get_first_child_matching(bml, self.act, BulletMLNode::is_term)
-            .map(|term| &bml.arena[term]);
+    fn run_change_direction<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
+        let term_node =
+            RunnerImpl::get_first_child_matching(data.bml, self.act, BulletMLNode::is_term)
+                .map(|term| &data.bml.arena[term]);
         if let Some(Node {
             data: BulletMLNode::Term(term),
             ..
         }) = &term_node
         {
-            let direction_node =
-                RunnerImpl::get_first_child_matching(bml, self.act, BulletMLNode::is_direction)
-                    .map(|direction| &bml.arena[direction]);
+            let direction_node = RunnerImpl::get_first_child_matching(
+                data.bml,
+                self.act,
+                BulletMLNode::is_direction,
+            )
+            .map(|direction| &data.bml.arena[direction]);
             if let Some(Node {
                 data: BulletMLNode::Direction { dir_type, dir },
                 ..
@@ -772,7 +752,7 @@ impl RunnerImpl {
     ) {
         let act_turn = self.act_turn.unwrap_or(0);
         let final_turn = act_turn + term;
-        let dir_first = runner.get_bullet_direction(&data.data);
+        let dir_first = runner.get_bullet_direction(data.data);
         if seq {
             self.change_dir = Some(LinearFunc::new(
                 act_turn,
@@ -801,22 +781,18 @@ impl RunnerImpl {
         }
     }
 
-    fn run_change_speed<D>(
-        &mut self,
-        bml: &BulletML,
-        data: &mut RunnerData<D>,
-        runner: &dyn AppRunner<D>,
-    ) {
-        let term_node = RunnerImpl::get_first_child_matching(bml, self.act, BulletMLNode::is_term)
-            .map(|term| &bml.arena[term]);
+    fn run_change_speed<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
+        let term_node =
+            RunnerImpl::get_first_child_matching(data.bml, self.act, BulletMLNode::is_term)
+                .map(|term| &data.bml.arena[term]);
         if let Some(Node {
             data: BulletMLNode::Term(term),
             ..
         }) = &term_node
         {
             let speed_node =
-                RunnerImpl::get_first_child_matching(bml, self.act, BulletMLNode::is_speed)
-                    .map(|speed| &bml.arena[speed]);
+                RunnerImpl::get_first_child_matching(data.bml, self.act, BulletMLNode::is_speed)
+                    .map(|speed| &data.bml.arena[speed]);
             if let Some(Node {
                 data: BulletMLNode::Speed { spd_type, spd },
                 ..
@@ -825,7 +801,7 @@ impl RunnerImpl {
                 let term = self.get_number_contents(term, data, runner) as u32;
                 let spd = if let Some(SpeedType::Sequence) = spd_type {
                     self.get_number_contents(spd, data, runner) * f64::from(term)
-                        + runner.get_bullet_speed(&data.data)
+                        + runner.get_bullet_speed(data.data)
                 } else {
                     self.get_speed(*spd_type, spd, data, runner)
                 };
@@ -844,30 +820,29 @@ impl RunnerImpl {
     ) {
         let act_turn = self.act_turn.unwrap_or(0);
         let final_turn = act_turn + term;
-        let spd_first = runner.get_bullet_speed(&data.data);
+        let spd_first = runner.get_bullet_speed(data.data);
         self.change_spd = Some(LinearFunc::new(act_turn, final_turn, spd_first, speed));
     }
 
-    fn run_accel<D>(
-        &mut self,
-        bml: &BulletML,
-        data: &mut RunnerData<D>,
-        runner: &dyn AppRunner<D>,
-    ) {
-        let term_node = RunnerImpl::get_first_child_matching(bml, self.act, BulletMLNode::is_term)
-            .map(|term| &bml.arena[term]);
+    fn run_accel<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
+        let term_node =
+            RunnerImpl::get_first_child_matching(data.bml, self.act, BulletMLNode::is_term)
+                .map(|term| &data.bml.arena[term]);
         if let Some(Node {
             data: BulletMLNode::Term(term),
             ..
         }) = &term_node
         {
             let term = self.get_number_contents(term, data, runner) as u32;
-            let h_node =
-                RunnerImpl::get_first_child_matching(bml, self.act, BulletMLNode::is_horizontal)
-                    .map(|h| &bml.arena[h]);
+            let h_node = RunnerImpl::get_first_child_matching(
+                data.bml,
+                self.act,
+                BulletMLNode::is_horizontal,
+            )
+            .map(|h| &data.bml.arena[h]);
             let v_node =
-                RunnerImpl::get_first_child_matching(bml, self.act, BulletMLNode::is_vertical)
-                    .map(|v| &bml.arena[v]);
+                RunnerImpl::get_first_child_matching(data.bml, self.act, BulletMLNode::is_vertical)
+                    .map(|v| &data.bml.arena[v]);
             if self.bml_type == Some(BulletMLType::Horizontal) {
                 if let Some(Node {
                     data: BulletMLNode::Vertical { v_type, v },
@@ -945,16 +920,11 @@ impl RunnerImpl {
         self.act = None;
     }
 
-    fn get_parameters<D>(
-        &self,
-        bml: &BulletML,
-        data: &mut RunnerData<D>,
-        runner: &dyn AppRunner<D>,
-    ) -> Parameters {
-        let children = self.act.unwrap().children(&bml.arena);
+    fn get_parameters<D>(&self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) -> Parameters {
+        let children = self.act.unwrap().children(&data.bml.arena);
         let mut parameters = Vec::new();
         for child in children {
-            let child_node = &bml.arena[child];
+            let child_node = &data.bml.arena[child];
             if let BulletMLNode::Param(expr) = &child_node.data {
                 parameters.push(self.get_number_contents(expr, data, runner));
             }
@@ -968,7 +938,7 @@ impl RunnerImpl {
         data: &mut RunnerData<D>,
         runner: &dyn AppRunner<D>,
     ) -> f64 {
-        let rank = runner.get_rank(&data.data);
+        let rank = runner.get_rank(data.data);
         let data_cell = RefCell::new(&mut data.data);
         let mut ctx = Context::new();
         ctx.func("rand", |_x| runner.get_rand(&mut data_cell.borrow_mut()));
