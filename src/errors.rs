@@ -1,110 +1,104 @@
-use failure::{Backtrace, Context, Fail};
 use roxmltree::TextPos;
-use std::fmt::{self, Display, Formatter};
+#[cfg(feature = "backtrace")]
+use std::backtrace::Backtrace;
+use std::fmt::{Display, Formatter};
 
-#[derive(Debug)]
-pub struct ParseError {
-    inner: Context<ParseErrorKind>,
-}
+#[derive(Error, Debug, new)]
+pub enum ParseError {
+    #[error("I/O error")]
+    Io {
+        #[from]
+        source: std::io::Error,
+        #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
+        backtrace: Backtrace,
+    },
 
-#[derive(Clone, Eq, PartialEq, Debug, Fail)]
-pub enum ParseErrorKind {
-    #[fail(display = "File open error")]
-    FileOpen,
-    #[fail(display = "Read error")]
-    FileRead,
+    #[error("Xml error")]
+    Xml {
+        #[from]
+        source: roxmltree::Error,
+        #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
+        backtrace: Backtrace,
+    },
 
-    #[fail(display = "Xml error")]
-    Xml,
-
-    #[fail(display = "Unexpected element {} at position {}", element, pos)]
-    UnexpectedElement { element: String, pos: ParseErrorPos },
-    #[fail(
-        display = "Missing attribute {} in element {} at position {}",
-        attribute, element, pos
-    )]
+    #[error("Unexpected element {element} at position {pos}")]
+    UnexpectedElement {
+        element: String,
+        pos: ParseErrorPos,
+        #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
+        backtrace: Backtrace,
+    },
+    #[error("Missing attribute {attribute} in element {element} at position {pos}")]
     MissingAttribute {
         attribute: String,
         element: String,
         pos: ParseErrorPos,
+        #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
+        backtrace: Backtrace,
     },
-    #[fail(display = "Unexpected node of type {} at position {}", node_type, pos)]
+    #[error("Unexpected node of type {node_type} at position {pos}")]
     UnexpectedNodeType {
         node_type: String,
         pos: ParseErrorPos,
+        #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
+        backtrace: Backtrace,
     },
 
-    #[fail(
-        display = "Unrecognized BulletML type {} at position {}",
-        bml_type, pos
-    )]
+    #[error("Unrecognized BulletML type {bml_type} at position {pos}")]
     UnrecognizedBmlType {
         bml_type: String,
         pos: ParseErrorPos,
+        #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
+        backtrace: Backtrace,
     },
-    #[fail(
-        display = "Unrecognized direction type {} at position {}",
-        dir_type, pos
-    )]
+    #[error("Unrecognized direction type {dir_type} at position {pos}")]
     UnrecognizedDirectionType {
         dir_type: String,
         pos: ParseErrorPos,
+        #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
+        backtrace: Backtrace,
     },
-    #[fail(display = "Unrecognized speed type {} at position {}", speed_type, pos)]
+    #[error("Unrecognized speed type {speed_type} at position {pos}")]
     UnrecognizedSpeedType {
         speed_type: String,
         pos: ParseErrorPos,
+        #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
+        backtrace: Backtrace,
     },
-    #[fail(
-        display = "Unrecognized acceleration direction type {} at position {}",
-        accel_dir_type, pos
-    )]
+    #[error("Unrecognized acceleration direction type {accel_dir_type} at position {pos}")]
     UnrecognizedAccelDirType {
         accel_dir_type: String,
         pos: ParseErrorPos,
+        #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
+        backtrace: Backtrace,
     },
 
-    #[fail(display = "Expression error at position {}", pos)]
-    Expression { pos: ParseErrorPos },
+    #[error("Expression error at position {pos}")]
+    Expression {
+        source: fasteval::Error,
+        pos: ParseErrorPos,
+        #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
+        backtrace: Backtrace,
+    },
 
-    #[fail(display = "Internal error")]
-    Internal,
-}
-
-impl Fail for ParseError {
-    fn cause(&self) -> Option<&dyn Fail> {
-        self.inner.cause()
-    }
-
-    fn backtrace(&self) -> Option<&Backtrace> {
-        self.inner.backtrace()
-    }
-}
-
-impl Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        Display::fmt(&self.inner, f)
-    }
-}
-
-impl ParseError {
-    pub fn kind(&self) -> &ParseErrorKind {
-        self.inner.get_context()
-    }
-}
-
-impl From<ParseErrorKind> for ParseError {
-    fn from(kind: ParseErrorKind) -> ParseError {
-        ParseError {
-            inner: Context::new(kind),
-        }
-    }
-}
-
-impl From<Context<ParseErrorKind>> for ParseError {
-    fn from(inner: Context<ParseErrorKind>) -> ParseError {
-        ParseError { inner: inner }
-    }
+    #[error("Internal error")]
+    Internal {
+        #[from]
+        source: Box<dyn std::error::Error>,
+        #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
+        backtrace: Backtrace,
+    },
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
