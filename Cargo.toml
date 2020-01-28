@@ -3,6 +3,10 @@ name = "bulletml"
 version = "0.1.0"
 authors = ["Arnaud de Bossoreille <arnaud.debossoreille@gmail.com>"]
 edition = "2018"
+license-file = "LICENSE"
+description = "BulletML library in Rust"
+documentation = "https://docs.rs/bulletml_rs"
+repository = "https://github.com/arnodb/bulletml_rs"
 
 [dependencies]
 derive-new = "0.5"
