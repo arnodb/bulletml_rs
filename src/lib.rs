@@ -1,5 +1,7 @@
 #![cfg_attr(feature = "backtrace", feature(backtrace))]
 
+#[macro_use]
+extern crate derive_new;
 #[cfg(test)]
 #[macro_use]
 extern crate matches;

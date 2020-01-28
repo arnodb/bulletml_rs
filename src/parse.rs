@@ -2,8 +2,6 @@ use crate::errors::{ParseError, ParseErrorPos};
 use crate::tree::{BulletML, BulletMLNode, BulletMLType, DirectionType, HVType, SpeedType};
 use indextree::{Arena, NodeId};
 use roxmltree::TextPos;
-#[cfg(feature = "backtrace")]
-use std::backtrace::Backtrace;
 use std::collections::HashMap;
 use std::fs;
 use std::io::prelude::*;
@@ -57,12 +55,10 @@ impl BulletMLParser {
                     expr_slab: self.expr_slab,
                 })
             }
-            name => Err(ParseError::UnexpectedElement {
-                element: name.to_string(),
-                pos: BulletMLParser::node_pos(&root),
-                #[cfg(feature = "backtrace")]
-                backtrace: Backtrace::capture(),
-            }),
+            name => Err(ParseError::new_unexpected_element(
+                name.to_string(),
+                BulletMLParser::node_pos(&root),
+            )),
         }
     }
 
@@ -87,12 +83,10 @@ impl BulletMLParser {
                     bml_type: Some(BulletMLType::Horizontal),
                 }),
                 _ => {
-                    return Err(ParseError::UnrecognizedBmlType {
-                        bml_type: type_att.to_string(),
-                        pos: BulletMLParser::attribute_value_pos(&bulletml, "type"),
-                        #[cfg(feature = "backtrace")]
-                        backtrace: Backtrace::capture(),
-                    });
+                    return Err(ParseError::new_unrecognized_bml_type(
+                        type_att.to_string(),
+                        BulletMLParser::attribute_value_pos(&bulletml, "type"),
+                    ));
                 }
             },
             None => self
@@ -106,16 +100,13 @@ impl BulletMLParser {
                 "action" => self.parse_action(child)?,
                 "fire" => self.parse_fire(child)?,
                 name => {
-                    return Err(ParseError::UnexpectedElement {
-                        element: name.to_string(),
-                        pos: BulletMLParser::node_pos(&child),
-                        #[cfg(feature = "backtrace")]
-                        backtrace: Backtrace::capture(),
-                    });
+                    return Err(ParseError::new_unexpected_element(
+                        name.to_string(),
+                        BulletMLParser::node_pos(&child),
+                    ));
                 }
             };
-            id.append(child_id, &mut self.arena)
-                .map_err(Box::<dyn std::error::Error>::from)?;
+            id.append(child_id, &mut self.arena).map_err(Box::from)?;
         }
         Ok(id)
     }
@@ -139,16 +130,13 @@ impl BulletMLParser {
                 "action" => self.parse_action(child)?,
                 "actionRef" => self.parse_action_ref(child)?,
                 name => {
-                    return Err(ParseError::UnexpectedElement {
-                        element: name.to_string(),
-                        pos: BulletMLParser::node_pos(&child),
-                        #[cfg(feature = "backtrace")]
-                        backtrace: Backtrace::capture(),
-                    });
+                    return Err(ParseError::new_unexpected_element(
+                        name.to_string(),
+                        BulletMLParser::node_pos(&child),
+                    ));
                 }
             };
-            id.append(child_id, &mut self.arena)
-                .map_err(Box::<dyn std::error::Error>::from)?;
+            id.append(child_id, &mut self.arena).map_err(Box::from)?;
         }
         Ok(id)
     }
@@ -178,16 +166,13 @@ impl BulletMLParser {
                 "action" => self.parse_action(child)?,
                 "actionRef" => self.parse_action_ref(child)?,
                 name => {
-                    return Err(ParseError::UnexpectedElement {
-                        element: name.to_string(),
-                        pos: BulletMLParser::node_pos(&child),
-                        #[cfg(feature = "backtrace")]
-                        backtrace: Backtrace::capture(),
-                    });
+                    return Err(ParseError::new_unexpected_element(
+                        name.to_string(),
+                        BulletMLParser::node_pos(&child),
+                    ));
                 }
             };
-            id.append(child_id, &mut self.arena)
-                .map_err(Box::<dyn std::error::Error>::from)?;
+            id.append(child_id, &mut self.arena).map_err(Box::from)?;
         }
         Ok(id)
     }
@@ -211,16 +196,13 @@ impl BulletMLParser {
                 "bullet" => self.parse_bullet(child)?,
                 "bulletRef" => self.parse_bullet_ref(child)?,
                 name => {
-                    return Err(ParseError::UnexpectedElement {
-                        element: name.to_string(),
-                        pos: BulletMLParser::node_pos(&child),
-                        #[cfg(feature = "backtrace")]
-                        backtrace: Backtrace::capture(),
-                    });
+                    return Err(ParseError::new_unexpected_element(
+                        name.to_string(),
+                        BulletMLParser::node_pos(&child),
+                    ));
                 }
             };
-            id.append(child_id, &mut self.arena)
-                .map_err(Box::<dyn std::error::Error>::from)?;
+            id.append(child_id, &mut self.arena).map_err(Box::from)?;
         }
         Ok(id)
     }
@@ -236,16 +218,13 @@ impl BulletMLParser {
                 "direction" => self.parse_direction(child)?,
                 "term" => self.parse_term(child)?,
                 name => {
-                    return Err(ParseError::UnexpectedElement {
-                        element: name.to_string(),
-                        pos: BulletMLParser::node_pos(&child),
-                        #[cfg(feature = "backtrace")]
-                        backtrace: Backtrace::capture(),
-                    });
+                    return Err(ParseError::new_unexpected_element(
+                        name.to_string(),
+                        BulletMLParser::node_pos(&child),
+                    ));
                 }
             };
-            id.append(child_id, &mut self.arena)
-                .map_err(Box::<dyn std::error::Error>::from)?;
+            id.append(child_id, &mut self.arena).map_err(Box::from)?;
         }
         Ok(id)
     }
@@ -258,16 +237,13 @@ impl BulletMLParser {
                 "speed" => self.parse_speed(child)?,
                 "term" => self.parse_term(child)?,
                 name => {
-                    return Err(ParseError::UnexpectedElement {
-                        element: name.to_string(),
-                        pos: BulletMLParser::node_pos(&child),
-                        #[cfg(feature = "backtrace")]
-                        backtrace: Backtrace::capture(),
-                    });
+                    return Err(ParseError::new_unexpected_element(
+                        name.to_string(),
+                        BulletMLParser::node_pos(&child),
+                    ));
                 }
             };
-            id.append(child_id, &mut self.arena)
-                .map_err(Box::<dyn std::error::Error>::from)?;
+            id.append(child_id, &mut self.arena).map_err(Box::from)?;
         }
         Ok(id)
     }
@@ -281,16 +257,13 @@ impl BulletMLParser {
                 "vertical" => self.parse_vertical(child)?,
                 "term" => self.parse_term(child)?,
                 name => {
-                    return Err(ParseError::UnexpectedElement {
-                        element: name.to_string(),
-                        pos: BulletMLParser::node_pos(&child),
-                        #[cfg(feature = "backtrace")]
-                        backtrace: Backtrace::capture(),
-                    });
+                    return Err(ParseError::new_unexpected_element(
+                        name.to_string(),
+                        BulletMLParser::node_pos(&child),
+                    ));
                 }
             };
-            id.append(child_id, &mut self.arena)
-                .map_err(Box::<dyn std::error::Error>::from)?;
+            id.append(child_id, &mut self.arena).map_err(Box::from)?;
         }
         Ok(id)
     }
@@ -315,16 +288,13 @@ impl BulletMLParser {
                 "action" => self.parse_action(child)?,
                 "actionRef" => self.parse_action_ref(child)?,
                 name => {
-                    return Err(ParseError::UnexpectedElement {
-                        element: name.to_string(),
-                        pos: BulletMLParser::node_pos(&child),
-                        #[cfg(feature = "backtrace")]
-                        backtrace: Backtrace::capture(),
-                    });
+                    return Err(ParseError::new_unexpected_element(
+                        name.to_string(),
+                        BulletMLParser::node_pos(&child),
+                    ));
                 }
             };
-            id.append(child_id, &mut self.arena)
-                .map_err(Box::<dyn std::error::Error>::from)?;
+            id.append(child_id, &mut self.arena).map_err(Box::from)?;
         }
         Ok(id)
     }
@@ -338,12 +308,10 @@ impl BulletMLParser {
             Some("sequence") => Some(DirectionType::Sequence),
             None => None,
             Some(type_att) => {
-                return Err(ParseError::UnrecognizedDirectionType {
-                    dir_type: type_att.to_string(),
-                    pos: BulletMLParser::attribute_value_pos(&direction, "type"),
-                    #[cfg(feature = "backtrace")]
-                    backtrace: Backtrace::capture(),
-                });
+                return Err(ParseError::new_unrecognized_direction_type(
+                    type_att.to_string(),
+                    BulletMLParser::attribute_value_pos(&direction, "type"),
+                ));
             }
         };
         let expr = self.parse_expression(direction)?;
@@ -362,12 +330,10 @@ impl BulletMLParser {
             Some("sequence") => Some(SpeedType::Sequence),
             None => None,
             Some(type_att) => {
-                return Err(ParseError::UnrecognizedSpeedType {
-                    speed_type: type_att.to_string(),
-                    pos: BulletMLParser::attribute_value_pos(&speed, "type"),
-                    #[cfg(feature = "backtrace")]
-                    backtrace: Backtrace::capture(),
-                });
+                return Err(ParseError::new_unrecognized_speed_type(
+                    type_att.to_string(),
+                    BulletMLParser::attribute_value_pos(&speed, "type"),
+                ));
             }
         };
         let expr = self.parse_expression(speed)?;
@@ -385,12 +351,10 @@ impl BulletMLParser {
             Some("relative") => HVType::Relative,
             Some("sequence") => HVType::Sequence,
             Some(type_att) => {
-                return Err(ParseError::UnrecognizedAccelDirType {
-                    accel_dir_type: type_att.to_string(),
-                    pos: BulletMLParser::attribute_value_pos(&horizontal, "type"),
-                    #[cfg(feature = "backtrace")]
-                    backtrace: Backtrace::capture(),
-                });
+                return Err(ParseError::new_unrecognized_accel_dir_type(
+                    type_att.to_string(),
+                    BulletMLParser::attribute_value_pos(&horizontal, "type"),
+                ));
             }
         };
         let expr = self.parse_expression(horizontal)?;
@@ -407,12 +371,10 @@ impl BulletMLParser {
             Some("relative") => HVType::Relative,
             Some("sequence") => HVType::Sequence,
             Some(type_att) => {
-                return Err(ParseError::UnrecognizedAccelDirType {
-                    accel_dir_type: type_att.to_string(),
-                    pos: BulletMLParser::attribute_value_pos(&vertical, "type"),
-                    #[cfg(feature = "backtrace")]
-                    backtrace: Backtrace::capture(),
-                });
+                return Err(ParseError::new_unrecognized_accel_dir_type(
+                    type_att.to_string(),
+                    BulletMLParser::attribute_value_pos(&vertical, "type"),
+                ));
             }
         };
         let expr = self.parse_expression(vertical)?;
@@ -439,13 +401,11 @@ impl BulletMLParser {
         let label = if let Some(label) = label {
             label
         } else {
-            return Err(ParseError::MissingAttribute {
-                attribute: "label".to_string(),
-                element: bullet_ref.tag_name().name().to_string(),
-                pos: BulletMLParser::node_pos(&bullet_ref),
-                #[cfg(feature = "backtrace")]
-                backtrace: Backtrace::capture(),
-            });
+            return Err(ParseError::new_missing_attribute(
+                "label".to_string(),
+                bullet_ref.tag_name().name().to_string(),
+                BulletMLParser::node_pos(&bullet_ref),
+            ));
         };
         let id = self
             .arena
@@ -455,16 +415,13 @@ impl BulletMLParser {
             let child_id = match child_name.name() {
                 "param" => self.parse_param(child)?,
                 name => {
-                    return Err(ParseError::UnexpectedElement {
-                        element: name.to_string(),
-                        pos: BulletMLParser::node_pos(&child),
-                        #[cfg(feature = "backtrace")]
-                        backtrace: Backtrace::capture(),
-                    });
+                    return Err(ParseError::new_unexpected_element(
+                        name.to_string(),
+                        BulletMLParser::node_pos(&child),
+                    ));
                 }
             };
-            id.append(child_id, &mut self.arena)
-                .map_err(Box::<dyn std::error::Error>::from)?;
+            id.append(child_id, &mut self.arena).map_err(Box::from)?;
         }
         Ok(id)
     }
@@ -474,13 +431,11 @@ impl BulletMLParser {
         let label = if let Some(label) = label {
             label
         } else {
-            return Err(ParseError::MissingAttribute {
-                attribute: "label".to_string(),
-                element: action_ref.tag_name().name().to_string(),
-                pos: BulletMLParser::node_pos(&action_ref),
-                #[cfg(feature = "backtrace")]
-                backtrace: Backtrace::capture(),
-            });
+            return Err(ParseError::new_missing_attribute(
+                "label".to_string(),
+                action_ref.tag_name().name().to_string(),
+                BulletMLParser::node_pos(&action_ref),
+            ));
         };
         let id = self
             .arena
@@ -490,16 +445,13 @@ impl BulletMLParser {
             let child_id = match child_name.name() {
                 "param" => self.parse_param(child)?,
                 name => {
-                    return Err(ParseError::UnexpectedElement {
-                        element: name.to_string(),
-                        pos: BulletMLParser::node_pos(&child),
-                        #[cfg(feature = "backtrace")]
-                        backtrace: Backtrace::capture(),
-                    });
+                    return Err(ParseError::new_unexpected_element(
+                        name.to_string(),
+                        BulletMLParser::node_pos(&child),
+                    ));
                 }
             };
-            id.append(child_id, &mut self.arena)
-                .map_err(Box::<dyn std::error::Error>::from)?;
+            id.append(child_id, &mut self.arena).map_err(Box::from)?;
         }
         Ok(id)
     }
@@ -509,13 +461,11 @@ impl BulletMLParser {
         let label = if let Some(label) = label {
             label
         } else {
-            return Err(ParseError::MissingAttribute {
-                attribute: "label".to_string(),
-                element: fire_ref.tag_name().name().to_string(),
-                pos: BulletMLParser::node_pos(&fire_ref),
-                #[cfg(feature = "backtrace")]
-                backtrace: Backtrace::capture(),
-            });
+            return Err(ParseError::new_missing_attribute(
+                "label".to_string(),
+                fire_ref.tag_name().name().to_string(),
+                BulletMLParser::node_pos(&fire_ref),
+            ));
         };
         let id = self
             .arena
@@ -525,16 +475,13 @@ impl BulletMLParser {
             let child_id = match child_name.name() {
                 "param" => self.parse_param(child)?,
                 name => {
-                    return Err(ParseError::UnexpectedElement {
-                        element: name.to_string(),
-                        pos: BulletMLParser::node_pos(&child),
-                        #[cfg(feature = "backtrace")]
-                        backtrace: Backtrace::capture(),
-                    });
+                    return Err(ParseError::new_unexpected_element(
+                        name.to_string(),
+                        BulletMLParser::node_pos(&child),
+                    ));
                 }
             };
-            id.append(child_id, &mut self.arena)
-                .map_err(Box::<dyn std::error::Error>::from)?;
+            id.append(child_id, &mut self.arena).map_err(Box::from)?;
         }
         Ok(id)
     }
@@ -557,12 +504,10 @@ impl BulletMLParser {
                     str.push_str(child.text().unwrap());
                 }
                 roxmltree::NodeType::Root | roxmltree::NodeType::Element => {
-                    return Err(ParseError::UnexpectedNodeType {
-                        node_type: format!("{:?}", node_type),
-                        pos: BulletMLParser::node_pos(&child),
-                        #[cfg(feature = "backtrace")]
-                        backtrace: Backtrace::capture(),
-                    });
+                    return Err(ParseError::new_unexpected_node_type(
+                        format!("{:?}", node_type),
+                        BulletMLParser::node_pos(&child),
+                    ));
                 }
                 roxmltree::NodeType::Comment | roxmltree::NodeType::PI => {}
             }
@@ -584,11 +529,11 @@ impl BulletMLParser {
         let expr_ref = self
             .expr_parser
             .parse_noclear(&str, &mut self.expr_slab.ps)
-            .map_err(|err| ParseError::Expression {
-                source: err,
-                pos: BulletMLParser::node_pos(parent.first_child().as_ref().unwrap_or(&parent)),
-                #[cfg(feature = "backtrace")]
-                backtrace: Backtrace::capture(),
+            .map_err(|err| {
+                ParseError::new_expression(
+                    err,
+                    BulletMLParser::node_pos(parent.first_child().as_ref().unwrap_or(&parent)),
+                )
             })?;
         Ok(expr_ref)
     }

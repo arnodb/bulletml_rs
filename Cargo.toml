@@ -5,6 +5,7 @@ authors = ["Arnaud de Bossoreille <arnaud.debossoreille@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+derive-new = "0.5"
 indextree = "3.0"
 fasteval = "0.2"
 regex = "1.3"

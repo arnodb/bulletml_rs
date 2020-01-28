@@ -3,13 +3,14 @@ use roxmltree::TextPos;
 use std::backtrace::Backtrace;
 use std::fmt::{Display, Formatter};
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, new)]
 pub enum ParseError {
     #[error("I/O error")]
     Io {
         #[from]
         source: std::io::Error,
         #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
         backtrace: Backtrace,
     },
 
@@ -18,6 +19,7 @@ pub enum ParseError {
         #[from]
         source: roxmltree::Error,
         #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
         backtrace: Backtrace,
     },
 
@@ -26,6 +28,7 @@ pub enum ParseError {
         element: String,
         pos: ParseErrorPos,
         #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
         backtrace: Backtrace,
     },
     #[error("Missing attribute {attribute} in element {element} at position {pos}")]
@@ -34,6 +37,7 @@ pub enum ParseError {
         element: String,
         pos: ParseErrorPos,
         #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
         backtrace: Backtrace,
     },
     #[error("Unexpected node of type {node_type} at position {pos}")]
@@ -41,6 +45,7 @@ pub enum ParseError {
         node_type: String,
         pos: ParseErrorPos,
         #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
         backtrace: Backtrace,
     },
 
@@ -49,6 +54,7 @@ pub enum ParseError {
         bml_type: String,
         pos: ParseErrorPos,
         #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
         backtrace: Backtrace,
     },
     #[error("Unrecognized direction type {dir_type} at position {pos}")]
@@ -56,6 +62,7 @@ pub enum ParseError {
         dir_type: String,
         pos: ParseErrorPos,
         #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
         backtrace: Backtrace,
     },
     #[error("Unrecognized speed type {speed_type} at position {pos}")]
@@ -63,6 +70,7 @@ pub enum ParseError {
         speed_type: String,
         pos: ParseErrorPos,
         #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
         backtrace: Backtrace,
     },
     #[error("Unrecognized acceleration direction type {accel_dir_type} at position {pos}")]
@@ -70,6 +78,7 @@ pub enum ParseError {
         accel_dir_type: String,
         pos: ParseErrorPos,
         #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
         backtrace: Backtrace,
     },
 
@@ -78,6 +87,7 @@ pub enum ParseError {
         source: fasteval::Error,
         pos: ParseErrorPos,
         #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
         backtrace: Backtrace,
     },
 
@@ -86,6 +96,7 @@ pub enum ParseError {
         #[from]
         source: Box<dyn std::error::Error>,
         #[cfg(feature = "backtrace")]
+        #[new(value = "Backtrace::capture()")]
         backtrace: Backtrace,
     },
 }
