@@ -1,4 +1,5 @@
 # bulletml_rs
+[![Latest Version](https://img.shields.io/crates/v/bulletml)](https://crates.io/crates/bulletml)
 [![Build Status](https://travis-ci.com/arnodb/bulletml_rs.svg?branch=master)](https://travis-ci.com/arnodb/bulletml_rs)
 [![codecov](https://codecov.io/gh/arnodb/bulletml_rs/branch/master/graph/badge.svg)](https://codecov.io/gh/arnodb/bulletml_rs)
 
