@@ -947,11 +947,11 @@ impl RunnerImpl {
         expr_ref
             .eval(
                 &data.bml.expr_slab,
-                &mut ExprNamespace {
-                    rank,
-                    vars: &self.parameters,
-                    data,
-                    runner,
+                &mut |name: &str, args: Vec<f64>| match (name, args.as_slice()) {
+                    ("v", &[i]) => Some(self.parameters[i as usize - 1]),
+                    ("rank", &[]) => Some(rank),
+                    ("rand", &[]) => Some(runner.get_rand(data.data)),
+                    _ => panic!("Eval {}, {:?}", name, &args),
                 },
             )
             .unwrap()
@@ -963,24 +963,6 @@ struct RepeatElem {
     iter: usize,
     end: usize,
     act: NodeId,
-}
-
-struct ExprNamespace<'a, 'd, D> {
-    rank: f64,
-    vars: &'a Vec<f64>,
-    data: &'a mut RunnerData<'d, D>,
-    runner: &'a dyn AppRunner<D>,
-}
-
-impl<'a, 'd, D> fasteval::EvalNamespace for ExprNamespace<'a, 'd, D> {
-    fn lookup(&mut self, name: &str, args: Vec<f64>, _keybuf: &mut String) -> Option<f64> {
-        match (name, args.as_slice()) {
-            ("v", &[i]) => Some(self.vars[i as usize - 1]),
-            ("rank", &[]) => Some(self.rank),
-            ("rand", &[]) => Some(self.runner.get_rand(self.data.data)),
-            _ => panic!("Eval {}, {:?}", name, &args),
-        }
-    }
 }
 
 #[cfg(test)]
