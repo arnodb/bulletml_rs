@@ -951,7 +951,7 @@ impl RunnerImpl {
                     ("v", &[i]) => Some(self.parameters[i as usize - 1]),
                     ("rank", &[]) => Some(rank),
                     ("rand", &[]) => Some(runner.get_rand(data.data)),
-                    _ => panic!("Eval {}, {:?}", name, &args),
+                    _ => None,
                 },
             )
             .unwrap()
