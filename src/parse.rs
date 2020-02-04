@@ -106,7 +106,7 @@ impl BulletMLParser {
                     ));
                 }
             };
-            id.append(child_id, &mut self.arena).map_err(Box::from)?;
+            id.append(child_id, &mut self.arena);
         }
         Ok(id)
     }
@@ -136,7 +136,7 @@ impl BulletMLParser {
                     ));
                 }
             };
-            id.append(child_id, &mut self.arena).map_err(Box::from)?;
+            id.append(child_id, &mut self.arena);
         }
         Ok(id)
     }
@@ -172,7 +172,7 @@ impl BulletMLParser {
                     ));
                 }
             };
-            id.append(child_id, &mut self.arena).map_err(Box::from)?;
+            id.append(child_id, &mut self.arena);
         }
         Ok(id)
     }
@@ -202,7 +202,7 @@ impl BulletMLParser {
                     ));
                 }
             };
-            id.append(child_id, &mut self.arena).map_err(Box::from)?;
+            id.append(child_id, &mut self.arena);
         }
         Ok(id)
     }
@@ -224,7 +224,7 @@ impl BulletMLParser {
                     ));
                 }
             };
-            id.append(child_id, &mut self.arena).map_err(Box::from)?;
+            id.append(child_id, &mut self.arena);
         }
         Ok(id)
     }
@@ -243,7 +243,7 @@ impl BulletMLParser {
                     ));
                 }
             };
-            id.append(child_id, &mut self.arena).map_err(Box::from)?;
+            id.append(child_id, &mut self.arena);
         }
         Ok(id)
     }
@@ -263,7 +263,7 @@ impl BulletMLParser {
                     ));
                 }
             };
-            id.append(child_id, &mut self.arena).map_err(Box::from)?;
+            id.append(child_id, &mut self.arena);
         }
         Ok(id)
     }
@@ -294,7 +294,7 @@ impl BulletMLParser {
                     ));
                 }
             };
-            id.append(child_id, &mut self.arena).map_err(Box::from)?;
+            id.append(child_id, &mut self.arena);
         }
         Ok(id)
     }
@@ -421,7 +421,7 @@ impl BulletMLParser {
                     ));
                 }
             };
-            id.append(child_id, &mut self.arena).map_err(Box::from)?;
+            id.append(child_id, &mut self.arena);
         }
         Ok(id)
     }
@@ -451,7 +451,7 @@ impl BulletMLParser {
                     ));
                 }
             };
-            id.append(child_id, &mut self.arena).map_err(Box::from)?;
+            id.append(child_id, &mut self.arena);
         }
         Ok(id)
     }
@@ -481,7 +481,7 @@ impl BulletMLParser {
                     ));
                 }
             };
-            id.append(child_id, &mut self.arena).map_err(Box::from)?;
+            id.append(child_id, &mut self.arena);
         }
         Ok(id)
     }
@@ -566,7 +566,7 @@ fn test_bulletml() {
         )
         .unwrap();
     assert_matches!(
-        &bml.arena[bml.root].data,
+        bml.arena[bml.root].get(),
         &BulletMLNode::BulletML { bml_type: None }
     );
 }
@@ -580,7 +580,7 @@ fn test_bulletml_type_none() {
         )
         .unwrap();
     assert_matches!(
-        &bml.arena[bml.root].data,
+        bml.arena[bml.root].get(),
         &BulletMLNode::BulletML { bml_type: None }
     );
 }
@@ -594,7 +594,7 @@ fn test_bulletml_type_vertical() {
         )
         .unwrap();
     assert_matches!(
-        &bml.arena[bml.root].data,
+        bml.arena[bml.root].get(),
         &BulletMLNode::BulletML {
             bml_type: Some(BulletMLType::Vertical)
         }
@@ -610,7 +610,7 @@ fn test_bulletml_type_horizontal() {
         )
         .unwrap();
     assert_matches!(
-        &bml.arena[bml.root].data,
+        bml.arena[bml.root].get(),
         &BulletMLNode::BulletML {
             bml_type: Some(BulletMLType::Horizontal)
         }

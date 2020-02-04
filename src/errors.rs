@@ -90,15 +90,6 @@ pub enum ParseError {
         #[new(value = "Backtrace::capture()")]
         backtrace: Backtrace,
     },
-
-    #[error("Internal error")]
-    Internal {
-        #[from]
-        source: Box<dyn std::error::Error>,
-        #[cfg(feature = "backtrace")]
-        #[new(value = "Backtrace::capture()")]
-        backtrace: Backtrace,
-    },
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]

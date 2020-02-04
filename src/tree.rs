@@ -1,3 +1,4 @@
+use fasteval::ExpressionI;
 use indextree::{Arena, NodeId};
 use std::collections::HashMap;
 
@@ -81,22 +82,6 @@ pub enum HVType {
 }
 
 impl BulletMLNode {
-    pub fn is_action(&self) -> bool {
-        if let BulletMLNode::Action { .. } = self {
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn is_action_ref(&self) -> bool {
-        if let BulletMLNode::ActionRef(..) = self {
-            true
-        } else {
-            false
-        }
-    }
-
     pub fn is_top_action(&self) -> bool {
         if let BulletMLNode::Action(Some(label)) = self {
             label.starts_with("top")
@@ -105,59 +90,57 @@ impl BulletMLNode {
         }
     }
 
-    pub fn is_bullet(&self) -> bool {
-        if let BulletMLNode::Bullet { .. } = self {
-            true
-        } else {
-            false
+    pub fn match_any_action(&self) -> Option<()> {
+        match self {
+            BulletMLNode::Action { .. } | BulletMLNode::ActionRef(..) => Some(()),
+            _ => None,
         }
     }
 
-    pub fn is_bullet_ref(&self) -> bool {
-        if let BulletMLNode::BulletRef(..) = self {
-            true
-        } else {
-            false
+    pub fn match_any_bullet(&self) -> Option<()> {
+        match self {
+            BulletMLNode::Bullet { .. } | BulletMLNode::BulletRef(..) => Some(()),
+            _ => None,
         }
     }
 
-    pub fn is_direction(&self) -> bool {
-        if let BulletMLNode::Direction { .. } = self {
-            true
+    pub fn match_direction(&self) -> Option<(Option<DirectionType>, ExpressionI)> {
+        if let BulletMLNode::Direction { dir_type, dir } = self {
+            Some((*dir_type, *dir))
         } else {
-            false
+            None
         }
     }
 
-    pub fn is_speed(&self) -> bool {
-        if let BulletMLNode::Speed { .. } = self {
-            true
+    pub fn match_speed(&self) -> Option<(Option<SpeedType>, ExpressionI)> {
+        if let BulletMLNode::Speed { spd_type, spd } = self {
+            Some((*spd_type, *spd))
         } else {
-            false
+            None
         }
     }
 
-    pub fn is_horizontal(&self) -> bool {
-        if let BulletMLNode::Horizontal { .. } = self {
-            true
+    pub fn match_horizontal(&self) -> Option<(HVType, ExpressionI)> {
+        if let BulletMLNode::Horizontal { h_type, h } = self {
+            Some((*h_type, *h))
         } else {
-            false
+            None
         }
     }
 
-    pub fn is_vertical(&self) -> bool {
-        if let BulletMLNode::Vertical { .. } = self {
-            true
+    pub fn match_vertical(&self) -> Option<(HVType, ExpressionI)> {
+        if let BulletMLNode::Vertical { v_type, v } = self {
+            Some((*v_type, *v))
         } else {
-            false
+            None
         }
     }
 
-    pub fn is_term(&self) -> bool {
-        if let BulletMLNode::Term(..) = self {
-            true
+    pub fn match_term(&self) -> Option<ExpressionI> {
+        if let BulletMLNode::Term(term) = self {
+            Some(*term)
         } else {
-            false
+            None
         }
     }
 }

@@ -1,4 +1,4 @@
-use indextree::{Node, NodeId};
+use indextree::{Arena, Node, NodeId};
 use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
 
@@ -30,7 +30,7 @@ impl<'a, R> Runner<R> {
             .children(&bml.arena)
             .filter(|child| {
                 let child_node = &bml.arena[*child];
-                child_node.data.is_top_action()
+                child_node.get().is_top_action()
             })
             .map(|action| {
                 let state = State {
@@ -55,7 +55,7 @@ impl<'a, R> Runner<R> {
         self.runners.clear();
         for action in bml.root.children(&bml.arena).filter(|child| {
             let child_node = &bml.arena[*child];
-            child_node.data.is_top_action()
+            child_node.get().is_top_action()
         }) {
             let state = State {
                 bml_type,
@@ -85,8 +85,8 @@ impl<'a, R> Runner<R> {
 
     pub fn get_bml_type(bml: &BulletML) -> Option<BulletMLType> {
         let root_node = &bml.arena[bml.root];
-        if let BulletMLNode::BulletML { bml_type } = root_node.data {
-            bml_type
+        if let BulletMLNode::BulletML { bml_type } = root_node.get() {
+            *bml_type
         } else {
             None
         }
@@ -402,8 +402,8 @@ impl RunnerImpl {
             let mut prev_node = &bml.arena[act];
             let node = &bml.arena[act];
             #[cfg(test)]
-            runner.log(&mut data.data, &node.data);
-            match &node.data {
+            runner.log(&mut data.data, node.get());
+            match node.get() {
                 BulletMLNode::Bullet { .. } => self.run_bullet(data, runner),
                 BulletMLNode::Action { .. } => self.run_action(node),
                 BulletMLNode::Fire { .. } => self.run_fire(data, runner),
@@ -425,7 +425,7 @@ impl RunnerImpl {
             if self.act.is_none() && !self.root_nodes.contains(&prev) {
                 let parent = prev_node.parent();
                 if let Some(parent) = parent {
-                    if let BulletMLNode::BulletML { .. } = bml.arena[parent].data {
+                    if let BulletMLNode::BulletML { .. } = bml.arena[parent].get() {
                         let top = self.ref_stack.pop().unwrap();
                         prev = top.0;
                         prev_node = &bml.arena[prev];
@@ -440,7 +440,7 @@ impl RunnerImpl {
                 if !self.root_nodes.contains(&prev) {
                     let parent = prev_node.parent();
                     if let Some(parent) = parent {
-                        if let BulletMLNode::Repeat = bml.arena[parent].data {
+                        if let BulletMLNode::Repeat = bml.arena[parent].get() {
                             {
                                 let rep = self.repeat_stack.last_mut().unwrap();
                                 rep.iter += 1;
@@ -466,7 +466,7 @@ impl RunnerImpl {
                 if !self.root_nodes.contains(&prev) {
                     let parent = prev_node.parent();
                     if let Some(parent) = parent {
-                        if let BulletMLNode::BulletML { .. } = bml.arena[parent].data {
+                        if let BulletMLNode::BulletML { .. } = bml.arena[parent].get() {
                             let top = self.ref_stack.pop().unwrap();
                             self.act = Some(top.0);
                             prev = top.0;
@@ -477,7 +477,7 @@ impl RunnerImpl {
                 }
                 self.act = {
                     let act_node = &bml.arena[self.act.unwrap()];
-                    if !act_node.data.is_top_action() {
+                    if !act_node.get().is_top_action() {
                         act_node.next_sibling()
                     } else {
                         None
@@ -487,36 +487,56 @@ impl RunnerImpl {
         }
     }
 
-    fn get_first_child_matching<M>(bml: &BulletML, parent: Option<NodeId>, m: M) -> Option<NodeId>
+    fn get_first_child_id_matching<M, N>(
+        arena: &Arena<BulletMLNode>,
+        parent: NodeId,
+        m: M,
+    ) -> Option<NodeId>
     where
-        M: Fn(&BulletMLNode) -> bool,
+        M: Fn(&BulletMLNode) -> Option<N>,
     {
-        if let Some(parent) = parent {
-            for child in parent.children(&bml.arena) {
-                let child_node = &bml.arena[child];
-                if m(&child_node.data) {
-                    return Some(child);
-                }
+        for child in parent.children(arena) {
+            let child_node = &arena[child];
+            if m(child_node.get()).is_some() {
+                return Some(child);
             }
         }
         None
     }
 
-    fn get_children_matching<M>(bml: &BulletML, parent: Option<NodeId>, m: M) -> Vec<NodeId>
+    fn get_first_child_matching<M, N>(
+        arena: &Arena<BulletMLNode>,
+        parent: NodeId,
+        m: M,
+    ) -> Option<N>
     where
-        M: Fn(&BulletMLNode) -> bool,
+        M: Fn(&BulletMLNode) -> Option<N>,
     {
-        if let Some(parent) = parent {
-            parent
-                .children(&bml.arena)
-                .filter(|child| {
-                    let child_node = &bml.arena[*child];
-                    m(&child_node.data)
-                })
-                .collect()
-        } else {
-            Vec::new()
+        for child in parent.children(arena) {
+            let child_node = &arena[child];
+            let n = m(child_node.get());
+            if n.is_some() {
+                return n;
+            }
         }
+        None
+    }
+
+    fn get_children_ids_matching<M, N>(
+        arena: &Arena<BulletMLNode>,
+        parent: NodeId,
+        m: M,
+    ) -> Vec<NodeId>
+    where
+        M: Fn(&BulletMLNode) -> Option<N>,
+    {
+        parent
+            .children(arena)
+            .filter(|child| {
+                let child_node = &arena[*child];
+                m(child_node.get()).is_some()
+            })
+            .collect()
     }
 
     fn shot_init(&mut self) {
@@ -571,7 +591,7 @@ impl RunnerImpl {
         if let Some(act) = self.act {
             for child in act.children(&data.bml.arena) {
                 let child_node = &data.bml.arena[child];
-                if let BulletMLNode::Direction { dir_type, dir } = &child_node.data {
+                if let BulletMLNode::Direction { dir_type, dir } = child_node.get() {
                     let direction = self.get_direction(*dir_type, *dir, data, runner);
                     self.dir.set(direction);
                     break;
@@ -608,7 +628,7 @@ impl RunnerImpl {
         if let Some(act) = self.act {
             for child in act.children(&data.bml.arena) {
                 let child_node = &data.bml.arena[child];
-                if let BulletMLNode::Speed { spd_type, spd } = &child_node.data {
+                if let BulletMLNode::Speed { spd_type, spd } = child_node.get() {
                     let speed = self.get_speed(*spd_type, *spd, data, runner);
                     self.spd.set(speed);
                     break;
@@ -618,7 +638,7 @@ impl RunnerImpl {
     }
 
     fn run_bullet<D>(&mut self, data: &mut RunnerData<D>, runner: &mut dyn AppRunner<D>) {
-        let bml = data.bml;
+        let arena = &data.bml.arena;
         self.set_speed(data, runner);
         self.set_direction(data, runner);
         if !self.spd.is_valid() {
@@ -631,9 +651,10 @@ impl RunnerImpl {
             self.dir.set(default);
             self.prev_dir.set(default);
         }
-        let all_actions = RunnerImpl::get_children_matching(bml, self.act, |node| {
-            node.is_action() || node.is_action_ref()
-        });
+        let all_actions = self.act.map_or_else(
+            || Vec::new(),
+            |act| Self::get_children_ids_matching(arena, act, BulletMLNode::match_any_action),
+        );
         if all_actions.is_empty() {
             runner.create_simple_bullet(&mut data.data, self.dir.get(), self.spd.get());
         } else {
@@ -651,16 +672,14 @@ impl RunnerImpl {
         self.shot_init();
         self.set_speed(data, runner);
         self.set_direction(data, runner);
-        let bullet =
-            RunnerImpl::get_first_child_matching(data.bml, self.act, BulletMLNode::is_bullet)
-                .or_else(|| {
-                    RunnerImpl::get_first_child_matching(
-                        data.bml,
-                        self.act,
-                        BulletMLNode::is_bullet_ref,
-                    )
-                });
-        self.act = bullet;
+        if let Some(act) = self.act {
+            let arena = &data.bml.arena;
+            let bullet =
+                Self::get_first_child_id_matching(arena, act, BulletMLNode::match_any_bullet);
+            if bullet.is_some() {
+                self.act = bullet;
+            }
+        }
     }
 
     fn run_action(&mut self, node: &Node<BulletMLNode>) {
@@ -682,21 +701,15 @@ impl RunnerImpl {
         let mut times: Option<usize> = None;
         for child in act.children(&data.bml.arena) {
             let child_node = &data.bml.arena[child];
-            if let BulletMLNode::Times(expr) = &child_node.data {
+            if let BulletMLNode::Times(expr) = child_node.get() {
                 times = Some(self.get_number_contents(*expr, data, runner) as usize);
                 break;
             }
         }
-        if let Some(times) = times {
+        if let (Some(act), Some(times)) = (self.act, times) {
+            let arena = &data.bml.arena;
             let action =
-                RunnerImpl::get_first_child_matching(data.bml, self.act, BulletMLNode::is_action)
-                    .or_else(|| {
-                        RunnerImpl::get_first_child_matching(
-                            data.bml,
-                            self.act,
-                            BulletMLNode::is_action_ref,
-                        )
-                    });
+                Self::get_first_child_id_matching(arena, act, BulletMLNode::match_any_action);
             self.repeat_stack.push(RepeatElem {
                 iter: 0,
                 end: times,
@@ -714,32 +727,21 @@ impl RunnerImpl {
     }
 
     fn run_change_direction<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
-        let term_node =
-            RunnerImpl::get_first_child_matching(data.bml, self.act, BulletMLNode::is_term)
-                .map(|term| &data.bml.arena[term]);
-        if let Some(Node {
-            data: BulletMLNode::Term(term),
-            ..
-        }) = &term_node
-        {
-            let direction_node = RunnerImpl::get_first_child_matching(
-                data.bml,
-                self.act,
-                BulletMLNode::is_direction,
-            )
-            .map(|direction| &data.bml.arena[direction]);
-            if let Some(Node {
-                data: BulletMLNode::Direction { dir_type, dir },
-                ..
-            }) = &direction_node
-            {
-                let term = self.get_number_contents(*term, data, runner) as u32;
-                let (dir, seq) = if let Some(DirectionType::Sequence) = dir_type {
-                    (self.get_number_contents(*dir, data, runner), true)
-                } else {
-                    (self.get_direction(*dir_type, *dir, data, runner), false)
-                };
-                self.calc_change_direction(dir, term, seq, data, runner);
+        if let Some(act) = self.act {
+            let arena = &data.bml.arena;
+            let term = Self::get_first_child_matching(arena, act, BulletMLNode::match_term);
+            if let Some(term) = term {
+                let direction =
+                    Self::get_first_child_matching(arena, act, BulletMLNode::match_direction);
+                if let Some((dir_type, dir)) = direction {
+                    let term = self.get_number_contents(term, data, runner) as u32;
+                    let (dir, seq) = if let Some(DirectionType::Sequence) = dir_type {
+                        (self.get_number_contents(dir, data, runner), true)
+                    } else {
+                        (self.get_direction(dir_type, dir, data, runner), false)
+                    };
+                    self.calc_change_direction(dir, term, seq, data, runner);
+                }
             }
         }
         self.act = None;
@@ -785,30 +787,21 @@ impl RunnerImpl {
     }
 
     fn run_change_speed<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
-        let term_node =
-            RunnerImpl::get_first_child_matching(data.bml, self.act, BulletMLNode::is_term)
-                .map(|term| &data.bml.arena[term]);
-        if let Some(Node {
-            data: BulletMLNode::Term(term),
-            ..
-        }) = &term_node
-        {
-            let speed_node =
-                RunnerImpl::get_first_child_matching(data.bml, self.act, BulletMLNode::is_speed)
-                    .map(|speed| &data.bml.arena[speed]);
-            if let Some(Node {
-                data: BulletMLNode::Speed { spd_type, spd },
-                ..
-            }) = &speed_node
-            {
-                let term = self.get_number_contents(*term, data, runner) as u32;
-                let spd = if let Some(SpeedType::Sequence) = spd_type {
-                    self.get_number_contents(*spd, data, runner) * f64::from(term)
-                        + runner.get_bullet_speed(data.data)
-                } else {
-                    self.get_speed(*spd_type, *spd, data, runner)
-                };
-                self.calc_change_speed(spd, term, data, runner);
+        if let Some(act) = self.act {
+            let arena = &data.bml.arena;
+            let term = Self::get_first_child_matching(arena, act, BulletMLNode::match_term);
+            if let Some(term) = term {
+                let speed = Self::get_first_child_matching(arena, act, BulletMLNode::match_speed);
+                if let Some((spd_type, spd)) = speed {
+                    let term = self.get_number_contents(term, data, runner) as u32;
+                    let spd = if let Some(SpeedType::Sequence) = spd_type {
+                        self.get_number_contents(spd, data, runner) * f64::from(term)
+                            + runner.get_bullet_speed(data.data)
+                    } else {
+                        self.get_speed(spd_type, spd, data, runner)
+                    };
+                    self.calc_change_speed(spd, term, data, runner);
+                }
             }
         }
         self.act = None;
@@ -828,73 +821,49 @@ impl RunnerImpl {
     }
 
     fn run_accel<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
-        let term_node =
-            RunnerImpl::get_first_child_matching(data.bml, self.act, BulletMLNode::is_term)
-                .map(|term| &data.bml.arena[term]);
-        if let Some(Node {
-            data: BulletMLNode::Term(term),
-            ..
-        }) = &term_node
-        {
-            let term = self.get_number_contents(*term, data, runner) as u32;
-            let h_node = RunnerImpl::get_first_child_matching(
-                data.bml,
-                self.act,
-                BulletMLNode::is_horizontal,
-            )
-            .map(|h| &data.bml.arena[h]);
-            let v_node =
-                RunnerImpl::get_first_child_matching(data.bml, self.act, BulletMLNode::is_vertical)
-                    .map(|v| &data.bml.arena[v]);
-            if self.bml_type == Some(BulletMLType::Horizontal) {
-                if let Some(Node {
-                    data: BulletMLNode::Vertical { v_type, v },
-                    ..
-                }) = &v_node
-                {
-                    self.accel_x = self.calc_accel_xy(
-                        runner.get_bullet_speed_x(),
-                        self.get_number_contents(*v, data, runner),
-                        term,
-                        *v_type,
-                    );
-                }
-                if let Some(Node {
-                    data: BulletMLNode::Horizontal { h_type, h },
-                    ..
-                }) = &h_node
-                {
-                    self.accel_y = self.calc_accel_xy(
-                        runner.get_bullet_speed_y(),
-                        self.get_number_contents(*h, data, runner),
-                        term,
-                        *h_type,
-                    );
-                }
-            } else {
-                if let Some(Node {
-                    data: BulletMLNode::Horizontal { h_type, h },
-                    ..
-                }) = &h_node
-                {
-                    self.accel_x = self.calc_accel_xy(
-                        runner.get_bullet_speed_x(),
-                        self.get_number_contents(*h, data, runner),
-                        term,
-                        *h_type,
-                    );
-                }
-                if let Some(Node {
-                    data: BulletMLNode::Vertical { v_type, v },
-                    ..
-                }) = &v_node
-                {
-                    self.accel_y = self.calc_accel_xy(
-                        runner.get_bullet_speed_y(),
-                        self.get_number_contents(*v, data, runner),
-                        term,
-                        *v_type,
-                    );
+        if let Some(act) = self.act {
+            let arena = &data.bml.arena;
+            let term = Self::get_first_child_matching(arena, act, BulletMLNode::match_term);
+            if let Some(term) = term {
+                let term = self.get_number_contents(term, data, runner) as u32;
+                let horizontal =
+                    Self::get_first_child_matching(arena, act, BulletMLNode::match_horizontal);
+                let vertical =
+                    Self::get_first_child_matching(arena, act, BulletMLNode::match_vertical);
+                if self.bml_type == Some(BulletMLType::Horizontal) {
+                    if let Some((v_type, v)) = vertical {
+                        self.accel_x = self.calc_accel_xy(
+                            runner.get_bullet_speed_x(),
+                            self.get_number_contents(v, data, runner),
+                            term,
+                            v_type,
+                        );
+                    }
+                    if let Some((h_type, h)) = horizontal {
+                        self.accel_y = self.calc_accel_xy(
+                            runner.get_bullet_speed_y(),
+                            self.get_number_contents(h, data, runner),
+                            term,
+                            h_type,
+                        );
+                    }
+                } else {
+                    if let Some((h_type, h)) = horizontal {
+                        self.accel_x = self.calc_accel_xy(
+                            runner.get_bullet_speed_x(),
+                            self.get_number_contents(h, data, runner),
+                            term,
+                            h_type,
+                        );
+                    }
+                    if let Some((v_type, v)) = vertical {
+                        self.accel_y = self.calc_accel_xy(
+                            runner.get_bullet_speed_y(),
+                            self.get_number_contents(v, data, runner),
+                            term,
+                            v_type,
+                        );
+                    }
                 }
             }
         }
@@ -928,7 +897,7 @@ impl RunnerImpl {
         let mut parameters = Vec::new();
         for child in children {
             let child_node = &data.bml.arena[child];
-            if let BulletMLNode::Param(expr) = &child_node.data {
+            if let BulletMLNode::Param(expr) = child_node.get() {
                 parameters.push(self.get_number_contents(*expr, data, runner));
             }
         }
