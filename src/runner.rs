@@ -143,11 +143,11 @@ pub trait AppRunner<D> {
     fn create_simple_bullet(&mut self, data: &mut D, direction: f64, speed: f64);
     fn create_bullet(&mut self, data: &mut D, state: State, direction: f64, speed: f64);
     fn get_turn(&self, data: &D) -> u32;
-    fn do_vanish(&self, data: &mut D);
-    fn do_change_direction(&self, _data: &mut D, _direction: f64) {}
-    fn do_change_speed(&self, _data: &mut D, _speed: f64) {}
-    fn do_accel_x(&self, _: f64) {}
-    fn do_accel_y(&self, _: f64) {}
+    fn do_vanish(&mut self, data: &mut D);
+    fn do_change_direction(&mut self, _data: &mut D, _direction: f64) {}
+    fn do_change_speed(&mut self, _data: &mut D, _speed: f64) {}
+    fn do_accel_x(&mut self, _: f64) {}
+    fn do_accel_y(&mut self, _: f64) {}
     fn get_bullet_speed_x(&self) -> f64 {
         0.
     }
@@ -332,7 +332,7 @@ impl RunnerImpl {
         }
     }
 
-    fn changes<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
+    fn changes<D>(&mut self, data: &mut RunnerData<D>, runner: &mut dyn AppRunner<D>) {
         let now = runner.get_turn(data.data);
         let reset = if let Some(change_dir) = &self.change_dir {
             if change_dir.is_last(now) {
@@ -887,7 +887,7 @@ impl RunnerImpl {
         Some(LinearFunc::new(act_turn, final_turn, first_spd, final_spd))
     }
 
-    fn run_vanish<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
+    fn run_vanish<D>(&mut self, data: &mut RunnerData<D>, runner: &mut dyn AppRunner<D>) {
         runner.do_vanish(&mut data.data);
         self.act = None;
     }
@@ -1079,15 +1079,15 @@ mod test_runner {
             self.turn
         }
 
-        fn do_vanish(&self, _data: &mut TestAppData<'a>) {}
+        fn do_vanish(&mut self, _data: &mut TestAppData<'a>) {}
 
-        fn do_change_direction(&self, data: &mut TestAppData<'a>, direction: f64) {
+        fn do_change_direction(&mut self, data: &mut TestAppData<'a>, direction: f64) {
             data.logs[self.index]
                 .log
                 .push(format!("do_change_direction({})", direction));
         }
 
-        fn do_change_speed(&self, data: &mut TestAppData<'a>, speed: f64) {
+        fn do_change_speed(&mut self, data: &mut TestAppData<'a>, speed: f64) {
             data.logs[self.index]
                 .log
                 .push(format!("do_change_speed({})", speed));
