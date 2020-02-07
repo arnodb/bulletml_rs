@@ -62,7 +62,7 @@ impl BulletMLParser {
         }
     }
 
-    pub fn parse_file(self, path: &path::Path) -> Result<BulletML, ParseError> {
+    pub fn parse_file<P: AsRef<path::Path>>(self, path: P) -> Result<BulletML, ParseError> {
         let mut file = fs::File::open(&path)?;
         let mut text = String::new();
         file.read_to_string(&mut text)?;
