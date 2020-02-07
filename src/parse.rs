@@ -1,5 +1,7 @@
 use crate::errors::{ParseError, ParseErrorPos};
-use crate::tree::{BulletML, BulletMLNode, BulletMLType, DirectionType, HVType, SpeedType};
+use crate::tree::{
+    BulletML, BulletMLExpression, BulletMLNode, BulletMLType, DirectionType, HVType, SpeedType,
+};
 use indextree::{Arena, NodeId};
 use roxmltree::TextPos;
 use std::collections::HashMap;
@@ -495,7 +497,7 @@ impl BulletMLParser {
     fn parse_expression(
         &mut self,
         parent: roxmltree::Node,
-    ) -> Result<fasteval::ExpressionI, ParseError> {
+    ) -> Result<BulletMLExpression, ParseError> {
         let mut str: String = String::new();
         for child in parent.children() {
             let node_type = child.node_type();
@@ -512,6 +514,12 @@ impl BulletMLParser {
                 roxmltree::NodeType::Comment | roxmltree::NodeType::PI => {}
             }
         }
+
+        let constant = str.parse();
+        if let Ok(constant) = constant {
+            return Ok(BulletMLExpression::Const(constant));
+        }
+
         let re = regex::Regex::new("\\$([0-9]+|rank|rand)").unwrap();
         let str = re.replace_all(&str, |captures: &regex::Captures| match &captures[1] {
             "rank" => "rank".to_string(),
@@ -535,7 +543,7 @@ impl BulletMLParser {
                     BulletMLParser::node_pos(parent.first_child().as_ref().unwrap_or(&parent)),
                 )
             })?;
-        Ok(expr_ref)
+        Ok(BulletMLExpression::Expr(expr_ref))
     }
 
     #[inline]

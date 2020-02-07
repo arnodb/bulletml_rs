@@ -2,7 +2,9 @@ use indextree::{Arena, Node, NodeId};
 use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
 
-use crate::tree::{BulletML, BulletMLNode, BulletMLType, DirectionType, HVType, SpeedType};
+use crate::tree::{
+    BulletML, BulletMLExpression, BulletMLNode, BulletMLType, DirectionType, HVType, SpeedType,
+};
 
 pub struct RunnerData<'a, D: 'a> {
     pub bml: &'a BulletML,
@@ -547,7 +549,7 @@ impl RunnerImpl {
     fn get_direction<D>(
         &mut self,
         dir_type: Option<DirectionType>,
-        expr: fasteval::ExpressionI,
+        expr: BulletMLExpression,
         data: &mut RunnerData<D>,
         runner: &dyn AppRunner<D>,
     ) -> f64 {
@@ -603,7 +605,7 @@ impl RunnerImpl {
     fn get_speed<D>(
         &mut self,
         spd_type: Option<SpeedType>,
-        expr: fasteval::ExpressionI,
+        expr: BulletMLExpression,
         data: &mut RunnerData<D>,
         runner: &dyn AppRunner<D>,
     ) -> f64 {
@@ -688,7 +690,7 @@ impl RunnerImpl {
 
     fn run_wait<D>(
         &mut self,
-        expr: fasteval::ExpressionI,
+        expr: BulletMLExpression,
         data: &mut RunnerData<D>,
         runner: &dyn AppRunner<D>,
     ) {
@@ -906,24 +908,29 @@ impl RunnerImpl {
 
     fn get_number_contents<D>(
         &self,
-        expr: fasteval::ExpressionI,
+        expr: BulletMLExpression,
         data: &mut RunnerData<D>,
         runner: &dyn AppRunner<D>,
     ) -> f64 {
-        let rank = runner.get_rank(&data.data);
-        let expr_ref = expr.from(&data.bml.expr_slab.ps);
-        use fasteval::Evaler;
-        expr_ref
-            .eval(
-                &data.bml.expr_slab,
-                &mut |name: &str, args: Vec<f64>| match (name, args.as_slice()) {
-                    ("v", &[i]) => Some(self.parameters[i as usize - 1]),
-                    ("rank", &[]) => Some(rank),
-                    ("rand", &[]) => Some(runner.get_rand(data.data)),
-                    _ => None,
-                },
-            )
-            .unwrap()
+        match expr {
+            BulletMLExpression::Const(value) => value,
+            BulletMLExpression::Expr(expr) => {
+                let rank = runner.get_rank(&data.data);
+                let expr_ref = expr.from(&data.bml.expr_slab.ps);
+                use fasteval::Evaler;
+                expr_ref
+                    .eval(
+                        &data.bml.expr_slab,
+                        &mut |name: &str, args: Vec<f64>| match (name, args.as_slice()) {
+                            ("v", &[i]) => Some(self.parameters[i as usize - 1]),
+                            ("rank", &[]) => Some(rank),
+                            ("rand", &[]) => Some(runner.get_rand(data.data)),
+                            _ => None,
+                        },
+                    )
+                    .unwrap()
+            }
+        }
     }
 }
 
@@ -1003,9 +1010,13 @@ mod test_runner {
         }
     }
 
-    impl Drop for TestLog {
+    struct TestLogs(Vec<TestLog>);
+
+    impl Drop for TestLogs {
         fn drop(&mut self) {
-            self.assert_log_end();
+            for log in &mut self.0 {
+                log.assert_log_end();
+            }
         }
     }
 
@@ -1168,6 +1179,7 @@ mod test_runner {
         logs[0].assert_log(r#"Bullet(None)"#, 1);
         logs[0].assert_log(r#"create_simple_bullet(0, 10)"#, 1);
         logs[0].assert_log(r#"=== 1"#, 1);
+        TestLogs(logs);
     }
 
     #[test]
@@ -1205,11 +1217,12 @@ mod test_runner {
             logs[0].assert_log(r#"Fire(None)"#, 1);
             logs[0].assert_log(r#"Bullet(None)"#, 1);
             logs[0].assert_log(r#"create_simple_bullet(0, 1)"#, 1);
-            logs[0].assert_log(r#"Wait(ExpressionI(3))"#, 1);
+            logs[0].assert_log(r#"Wait(Const(100.0))"#, 1);
             for j in 0..100 {
                 logs[0].assert_log(&format!(r#"=== {}"#, i * 100 + j + 1), 1);
             }
         }
+        TestLogs(logs);
     }
 
     #[test]
@@ -1357,7 +1370,7 @@ mod test_runner {
         logs[0].assert_log(r#"BulletRef("parentbit")"#, 1);
         logs[0].assert_log(r#"Bullet(Some("parentbit"))"#, 1);
         logs[0].assert_log(r#"create_bullet(330, 2)"#, 1);
-        logs[0].assert_log(r#"Wait(ExpressionI(4))"#, 1);
+        logs[0].assert_log(r#"Wait(Const(300.0))"#, 1);
         for i in 0..300 {
             logs[0].assert_log(&format!(r#"=== {}"#, i + 1), 1);
         }
@@ -1374,7 +1387,7 @@ mod test_runner {
                     logs[i].assert_log(r#"Bullet(Some("aimbit"))"#, 1);
                     logs[i].assert_log(&format!(r#"create_bullet({}, 0.6)"#, k * 90 % 360), 1);
                 }
-                logs[i].assert_log(r#"Wait(ExpressionI(55))"#, 1);
+                logs[i].assert_log(r#"Wait(Const(5.0))"#, 1);
                 for k in 0..5 {
                     logs[i].assert_log(&format!(r#"=== {}"#, j * 5 + k + 2), 1);
                 }
@@ -1390,7 +1403,7 @@ mod test_runner {
             let mut spd = 1.6;
             for j in 0..1 {
                 logs[i].assert_log(r#"Action(None)"#, 1);
-                logs[i].assert_log(r#"Wait(ExpressionI(58))"#, 1);
+                logs[i].assert_log(r#"Wait(Expr(ExpressionI(27)))"#, 1);
                 for k in 0..v1s[(i - 3) / 8 % 12] {
                     logs[i].assert_log(&format!(r#"=== {}"#, (i - 3) / 8 * 5 + k + 3), 1);
                 }
@@ -1419,6 +1432,7 @@ mod test_runner {
                 1,
             );
         }
+        TestLogs(logs);
     }
 
     #[test]
@@ -1457,11 +1471,11 @@ mod test_runner {
         logs[0].assert_log(r#"=== 0"#, 1);
         logs[0].assert_log(r#"Action(Some("top"))"#, 1);
         logs[0].assert_log(r#"ChangeSpeed"#, 1);
-        logs[0].assert_log(r#"Wait(ExpressionI(2))"#, 1);
+        logs[0].assert_log(r#"Wait(Const(1.0))"#, 1);
         logs[0].assert_log(r#"=== 1"#, 1);
         logs[0].assert_log(r#"do_change_speed(0)"#, 1);
         logs[0].assert_log(r#"ChangeSpeed"#, 1);
-        logs[0].assert_log(r#"Wait(ExpressionI(5))"#, 1);
+        logs[0].assert_log(r#"Wait(Expr(ExpressionI(1)))"#, 1);
         logs[0].assert_log(r#"=== 2"#, 1);
         logs[0].assert_log(r#"do_change_speed(1)"#, 1);
         logs[0].assert_log(r#"=== 3"#, 1);
@@ -1486,6 +1500,7 @@ mod test_runner {
         logs[0].assert_log(r#"Bullet(None)"#, 1);
         logs[0].assert_log(r#"create_simple_bullet(0, 10)"#, 1);
         logs[0].assert_log(r#"=== 12"#, 1);
+        TestLogs(logs);
     }
 
     #[test]
@@ -1541,7 +1556,7 @@ mod test_runner {
         logs[0].assert_log(r#"create_bullet(0, 0.09999999999999998)"#, 1);
         logs[0].assert_log(r#"Repeat"#, 1);
         logs[0].assert_log(r#"Action(None)"#, 1);
-        logs[0].assert_log(r#"Wait(ExpressionI(3))"#, 1);
+        logs[0].assert_log(r#"Wait(Const(2.0))"#, 1);
         logs[0].assert_log(r#"=== 1"#, 1);
         logs[0].assert_log(r#"=== 2"#, 1);
         logs[0].assert_log(r#"Fire(None)"#, 1);
@@ -1553,7 +1568,7 @@ mod test_runner {
 
         logs[1].assert_log(r#"=== 1"#, 1);
         logs[1].assert_log(r#"Action(None)"#, 1);
-        logs[1].assert_log(r#"Wait(ExpressionI(6))"#, 1);
+        logs[1].assert_log(r#"Wait(Const(3.0))"#, 1);
         logs[1].assert_log(r#"=== 2"#, 1);
         logs[1].assert_log(r#"=== 3"#, 1);
         logs[1].assert_log(r#"=== 4"#, 1);
@@ -1565,7 +1580,7 @@ mod test_runner {
 
         logs[2].assert_log(r#"=== 3"#, 1);
         logs[2].assert_log(r#"Action(None)"#, 1);
-        logs[2].assert_log(r#"Wait(ExpressionI(6))"#, 1);
+        logs[2].assert_log(r#"Wait(Const(3.0))"#, 1);
         logs[2].assert_log(r#"=== 4"#, 1);
         logs[2].assert_log(r#"=== 5"#, 1);
         logs[2].assert_log(r#"=== 6"#, 1);
@@ -1574,6 +1589,7 @@ mod test_runner {
             logs[2].assert_log(&format!(r#"=== {}"#, i + 7), 1);
             logs[2].assert_log(r#"do_change_speed(1)"#, 1);
         }
+        TestLogs(logs);
     }
 
     #[test]
@@ -1637,7 +1653,7 @@ mod test_runner {
         manager.run_test(100, &mut logs);
         logs[0].assert_log(r#"=== 0"#, 1);
         logs[0].assert_log(r#"Action(Some("top"))"#, 1);
-        logs[0].assert_log(r#"Wait(ExpressionI(0))"#, 1);
+        logs[0].assert_log(r#"Wait(Const(1.0))"#, 1);
         logs[0].assert_log(r#"=== 1"#, 1);
         logs[0].assert_log(r#"Fire(None)"#, 1);
         logs[0].assert_log(r#"Bullet(None)"#, 1);
@@ -1652,11 +1668,11 @@ mod test_runner {
         logs[1].assert_log(r#"ActionRef("ofs")"#, 1);
         logs[1].assert_log(r#"Action(Some("ofs"))"#, 1);
         logs[1].assert_log(r#"ChangeDirection"#, 1);
-        logs[1].assert_log(r#"Wait(ExpressionI(10))"#, 1);
+        logs[1].assert_log(r#"Wait(Const(1.0))"#, 1);
         logs[1].assert_log(r#"=== 3"#, 1);
         logs[1].assert_log(r#"do_change_direction(90)"#, 1);
         logs[1].assert_log(r#"ChangeDirection"#, 1);
-        logs[1].assert_log(r#"Wait(ExpressionI(14))"#, 1);
+        logs[1].assert_log(r#"Wait(Const(1.0))"#, 1);
         logs[1].assert_log(r#"=== 4"#, 1);
         logs[1].assert_log(r#"do_change_direction(-90)"#, 1);
         logs[1].assert_log(r#"Fire(None)"#, 1);
@@ -1669,11 +1685,11 @@ mod test_runner {
         logs[2].assert_log(r#"ActionRef("ofs")"#, 1);
         logs[2].assert_log(r#"Action(Some("ofs"))"#, 1);
         logs[2].assert_log(r#"ChangeDirection"#, 1);
-        logs[2].assert_log(r#"Wait(ExpressionI(10))"#, 1);
+        logs[2].assert_log(r#"Wait(Const(1.0))"#, 1);
         logs[2].assert_log(r#"=== 3"#, 1);
         logs[2].assert_log(r#"do_change_direction(-90)"#, 1);
         logs[2].assert_log(r#"ChangeDirection"#, 1);
-        logs[2].assert_log(r#"Wait(ExpressionI(14))"#, 1);
+        logs[2].assert_log(r#"Wait(Const(1.0))"#, 1);
         logs[2].assert_log(r#"=== 4"#, 1);
         logs[2].assert_log(r#"do_change_direction(90)"#, 1);
         logs[2].assert_log(r#"Fire(None)"#, 1);
@@ -1681,6 +1697,7 @@ mod test_runner {
         logs[2].assert_log(r#"create_simple_bullet(0, 0)"#, 1);
         logs[2].assert_log(r#"Vanish"#, 1);
         logs[2].assert_log(r#"=== 5"#, 1);
+        TestLogs(logs);
     }
 
     #[test]
@@ -1745,7 +1762,7 @@ mod test_runner {
         manager.run_test(100, &mut logs);
         logs[0].assert_log(r#"=== 0"#, 1);
         logs[0].assert_log(r#"Action(Some("top"))"#, 1);
-        logs[0].assert_log(r#"Wait(ExpressionI(0))"#, 1);
+        logs[0].assert_log(r#"Wait(Const(1.0))"#, 1);
         logs[0].assert_log(r#"=== 1"#, 1);
         logs[0].assert_log(r#"Fire(None)"#, 1);
         logs[0].assert_log(r#"Bullet(None)"#, 1);
@@ -1760,11 +1777,11 @@ mod test_runner {
         logs[1].assert_log(r#"ActionRef("ofs")"#, 1);
         logs[1].assert_log(r#"Action(Some("ofs"))"#, 1);
         logs[1].assert_log(r#"ChangeDirection"#, 1);
-        logs[1].assert_log(r#"Wait(ExpressionI(12))"#, 1);
+        logs[1].assert_log(r#"Wait(Const(1.0))"#, 1);
         logs[1].assert_log(r#"=== 3"#, 1);
         logs[1].assert_log(r#"do_change_direction(0)"#, 1);
         logs[1].assert_log(r#"ChangeDirection"#, 1);
-        logs[1].assert_log(r#"Wait(ExpressionI(16))"#, 1);
+        logs[1].assert_log(r#"Wait(Const(1.0))"#, 1);
         logs[1].assert_log(r#"=== 4"#, 1);
         logs[1].assert_log(r#"do_change_direction(0)"#, 1);
         logs[1].assert_log(r#"Fire(None)"#, 1);
@@ -1777,11 +1794,11 @@ mod test_runner {
         logs[2].assert_log(r#"ActionRef("ofs")"#, 1);
         logs[2].assert_log(r#"Action(Some("ofs"))"#, 1);
         logs[2].assert_log(r#"ChangeDirection"#, 1);
-        logs[2].assert_log(r#"Wait(ExpressionI(12))"#, 1);
+        logs[2].assert_log(r#"Wait(Const(1.0))"#, 1);
         logs[2].assert_log(r#"=== 3"#, 1);
         logs[2].assert_log(r#"do_change_direction(-120)"#, 1);
         logs[2].assert_log(r#"ChangeDirection"#, 1);
-        logs[2].assert_log(r#"Wait(ExpressionI(16))"#, 1);
+        logs[2].assert_log(r#"Wait(Const(1.0))"#, 1);
         logs[2].assert_log(r#"=== 4"#, 1);
         logs[2].assert_log(r#"do_change_direction(120)"#, 1);
         logs[2].assert_log(r#"Fire(None)"#, 1);
@@ -1789,5 +1806,6 @@ mod test_runner {
         logs[2].assert_log(r#"create_simple_bullet(0, 0.48)"#, 1);
         logs[2].assert_log(r#"Vanish"#, 1);
         logs[2].assert_log(r#"=== 5"#, 1);
+        TestLogs(logs);
     }
 }

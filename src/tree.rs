@@ -1,6 +1,11 @@
-use fasteval::ExpressionI;
 use indextree::{Arena, NodeId};
 use std::collections::HashMap;
+
+#[derive(Debug, Clone, Copy)]
+pub enum BulletMLExpression {
+    Const(f64),
+    Expr(fasteval::ExpressionI),
+}
 
 #[derive(Debug)]
 pub enum BulletMLNode {
@@ -17,7 +22,7 @@ pub enum BulletMLNode {
 
     Accel,
 
-    Wait(fasteval::ExpressionI),
+    Wait(BulletMLExpression),
 
     Vanish,
 
@@ -25,32 +30,32 @@ pub enum BulletMLNode {
 
     Direction {
         dir_type: Option<DirectionType>,
-        dir: fasteval::ExpressionI,
+        dir: BulletMLExpression,
     },
 
     Speed {
         spd_type: Option<SpeedType>,
-        spd: fasteval::ExpressionI,
+        spd: BulletMLExpression,
     },
 
     Horizontal {
         h_type: HVType,
-        h: fasteval::ExpressionI,
+        h: BulletMLExpression,
     },
     Vertical {
         v_type: HVType,
-        v: fasteval::ExpressionI,
+        v: BulletMLExpression,
     },
 
-    Term(fasteval::ExpressionI),
+    Term(BulletMLExpression),
 
-    Times(fasteval::ExpressionI),
+    Times(BulletMLExpression),
 
     BulletRef(String),
     ActionRef(String),
     FireRef(String),
 
-    Param(fasteval::ExpressionI),
+    Param(BulletMLExpression),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -104,7 +109,7 @@ impl BulletMLNode {
         }
     }
 
-    pub fn match_direction(&self) -> Option<(Option<DirectionType>, ExpressionI)> {
+    pub fn match_direction(&self) -> Option<(Option<DirectionType>, BulletMLExpression)> {
         if let BulletMLNode::Direction { dir_type, dir } = self {
             Some((*dir_type, *dir))
         } else {
@@ -112,7 +117,7 @@ impl BulletMLNode {
         }
     }
 
-    pub fn match_speed(&self) -> Option<(Option<SpeedType>, ExpressionI)> {
+    pub fn match_speed(&self) -> Option<(Option<SpeedType>, BulletMLExpression)> {
         if let BulletMLNode::Speed { spd_type, spd } = self {
             Some((*spd_type, *spd))
         } else {
@@ -120,7 +125,7 @@ impl BulletMLNode {
         }
     }
 
-    pub fn match_horizontal(&self) -> Option<(HVType, ExpressionI)> {
+    pub fn match_horizontal(&self) -> Option<(HVType, BulletMLExpression)> {
         if let BulletMLNode::Horizontal { h_type, h } = self {
             Some((*h_type, *h))
         } else {
@@ -128,7 +133,7 @@ impl BulletMLNode {
         }
     }
 
-    pub fn match_vertical(&self) -> Option<(HVType, ExpressionI)> {
+    pub fn match_vertical(&self) -> Option<(HVType, BulletMLExpression)> {
         if let BulletMLNode::Vertical { v_type, v } = self {
             Some((*v_type, *v))
         } else {
@@ -136,7 +141,7 @@ impl BulletMLNode {
         }
     }
 
-    pub fn match_term(&self) -> Option<ExpressionI> {
+    pub fn match_term(&self) -> Option<BulletMLExpression> {
         if let BulletMLNode::Term(term) = self {
             Some(*term)
         } else {
