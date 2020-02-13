@@ -235,6 +235,12 @@ where
     }
 }
 
+struct StackedRef {
+    ref_id: NodeId,
+    prev: NodeId,
+    prev_parameters: Parameters,
+}
+
 pub struct RunnerImpl {
     bml_type: Option<BulletMLType>,
     nodes: Box<[NodeId]>,
@@ -254,7 +260,7 @@ pub struct RunnerImpl {
     end: bool,
     parameters: Parameters,
     repeat_stack: Vec<RepeatElem>,
-    ref_stack: Vec<(NodeId, Parameters)>,
+    ref_stack: Vec<StackedRef>,
 }
 
 impl RunnerImpl {
@@ -415,76 +421,64 @@ impl RunnerImpl {
                 BulletMLNode::Wait(expr) => self.run_wait(*expr, data, runner),
                 BulletMLNode::Repeat => self.run_repeat(act, data, runner),
                 BulletMLNode::BulletRef(label) => {
-                    self.run_ref(bml.bullet_refs[label], data, runner)
+                    self.run_ref(act, bml.bullet_refs[label], data, runner)
                 }
                 BulletMLNode::ActionRef(label) => {
-                    self.run_ref(bml.action_refs[label], data, runner)
+                    self.run_ref(act, bml.action_refs[label], data, runner)
                 }
-                BulletMLNode::FireRef(label) => self.run_ref(bml.fire_refs[label], data, runner),
+                BulletMLNode::FireRef(label) => {
+                    self.run_ref(act, bml.fire_refs[label], data, runner)
+                }
                 BulletMLNode::Vanish => self.run_vanish(data, runner),
                 _ => (),
             }
-            if self.act.is_none() && !self.root_nodes.contains(&prev) {
-                let parent = prev_node.parent();
-                if let Some(parent) = parent {
-                    if let BulletMLNode::BulletML { .. } = bml.arena[parent].get() {
+            loop {
+                if self.act.is_none() {
+                    // Unstack reference if needed.
+                    if self
+                        .ref_stack
+                        .last()
+                        .map_or(false, |stacked| stacked.ref_id == prev)
+                    {
                         let top = self.ref_stack.pop().unwrap();
-                        prev = top.0;
+                        prev = top.prev;
                         prev_node = &bml.arena[prev];
-                        self.parameters = top.1;
+                        self.parameters = top.prev_parameters;
+                    }
+
+                    // Jump to next sibling if any.
+                    if !self.root_nodes.contains(&prev) {
+                        self.act = prev_node.next_sibling();
                     }
                 }
-            }
-            if self.act.is_none() && !self.root_nodes.contains(&prev) {
-                self.act = prev_node.next_sibling();
-            }
-            while self.act.is_none() {
-                if !self.root_nodes.contains(&prev) {
-                    let parent = prev_node.parent();
-                    if let Some(parent) = parent {
-                        if let BulletMLNode::Repeat = bml.arena[parent].get() {
-                            {
-                                let rep = self.repeat_stack.last_mut().unwrap();
-                                rep.iter += 1;
-                                if rep.iter < rep.end {
-                                    self.act = Some(rep.act);
-                                    break;
-                                }
-                            };
-                            self.repeat_stack.pop();
+
+                // Found something to run or hit a root node, break.
+                if self.act.is_some() || self.root_nodes.contains(&prev) {
+                    break;
+                }
+
+                // Go to parent unless it is an unfinished Repeat.
+                let parent = prev_node.parent();
+                let (new_act, new_act_node) = if let Some(parent) = parent {
+                    let parent_node = &bml.arena[parent];
+                    if let BulletMLNode::Repeat = parent_node.get() {
+                        let rep = self.repeat_stack.last_mut().unwrap();
+                        rep.iter += 1;
+                        if rep.iter < rep.end {
+                            // Unfinished Repeat, set act and break loop.
+                            self.act = Some(rep.act);
+                            break;
                         }
+                        // Finished Repeat, pop.
+                        self.repeat_stack.pop();
                     }
-                    self.act = parent;
+                    (parent, parent_node)
                 } else {
-                    self.act = None;
-                }
-                match self.act {
-                    None => break,
-                    Some(act) => {
-                        prev = act;
-                        prev_node = &bml.arena[prev]
-                    }
-                }
-                if !self.root_nodes.contains(&prev) {
-                    let parent = prev_node.parent();
-                    if let Some(parent) = parent {
-                        if let BulletMLNode::BulletML { .. } = bml.arena[parent].get() {
-                            let top = self.ref_stack.pop().unwrap();
-                            self.act = Some(top.0);
-                            prev = top.0;
-                            prev_node = &bml.arena[prev];
-                            self.parameters = top.1;
-                        }
-                    }
-                }
-                self.act = {
-                    let act_node = &bml.arena[self.act.unwrap()];
-                    if !act_node.get().is_top_action() {
-                        act_node.next_sibling()
-                    } else {
-                        None
-                    }
+                    panic!("A run node must have a parent");
                 };
+
+                prev = new_act;
+                prev_node = new_act_node;
             }
         }
     }
@@ -721,11 +715,21 @@ impl RunnerImpl {
         }
     }
 
-    fn run_ref<D>(&mut self, r: NodeId, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
+    fn run_ref<D>(
+        &mut self,
+        act: NodeId,
+        ref_id: NodeId,
+        data: &mut RunnerData<D>,
+        runner: &dyn AppRunner<D>,
+    ) {
         let new_parameters = self.get_parameters(data, runner);
         let prev_parameters = std::mem::replace(&mut self.parameters, new_parameters);
-        self.ref_stack.push((self.act.unwrap(), prev_parameters));
-        self.act = Some(r);
+        self.ref_stack.push(StackedRef {
+            ref_id,
+            prev: act,
+            prev_parameters: prev_parameters,
+        });
+        self.act = Some(ref_id);
     }
 
     fn run_change_direction<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
