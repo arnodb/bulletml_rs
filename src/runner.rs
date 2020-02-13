@@ -585,13 +585,11 @@ impl RunnerImpl {
 
     fn set_direction<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
         if let Some(act) = self.act {
-            for child in act.children(&data.bml.arena) {
-                let child_node = &data.bml.arena[child];
-                if let BulletMLNode::Direction { dir_type, dir } = child_node.get() {
-                    let direction = self.get_direction(*dir_type, *dir, data, runner);
-                    self.dir.set(direction);
-                    break;
-                }
+            let direction =
+                Self::get_first_child_matching(&data.bml.arena, act, BulletMLNode::match_direction);
+            if let Some((dir_type, dir)) = direction {
+                let direction = self.get_direction(dir_type, dir, data, runner);
+                self.dir.set(direction);
             }
         }
     }
@@ -622,13 +620,11 @@ impl RunnerImpl {
 
     fn set_speed<D>(&mut self, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
         if let Some(act) = self.act {
-            for child in act.children(&data.bml.arena) {
-                let child_node = &data.bml.arena[child];
-                if let BulletMLNode::Speed { spd_type, spd } = child_node.get() {
-                    let speed = self.get_speed(*spd_type, *spd, data, runner);
-                    self.spd.set(speed);
-                    break;
-                }
+            let speed =
+                Self::get_first_child_matching(&data.bml.arena, act, BulletMLNode::match_speed);
+            if let Some((spd_type, spd)) = speed {
+                let speed = self.get_speed(spd_type, spd, data, runner);
+                self.spd.set(speed);
             }
         }
     }
@@ -694,15 +690,9 @@ impl RunnerImpl {
     }
 
     fn run_repeat<D>(&mut self, act: NodeId, data: &mut RunnerData<D>, runner: &dyn AppRunner<D>) {
-        let mut times: Option<usize> = None;
-        for child in act.children(&data.bml.arena) {
-            let child_node = &data.bml.arena[child];
-            if let BulletMLNode::Times(expr) = child_node.get() {
-                times = Some(self.get_number_contents(*expr, data, runner) as usize);
-                break;
-            }
-        }
-        if let (Some(act), Some(times)) = (self.act, times) {
+        let times = Self::get_first_child_matching(&data.bml.arena, act, BulletMLNode::match_times);
+        if let Some(times) = times {
+            let times = self.get_number_contents(times, data, runner) as usize;
             let arena = &data.bml.arena;
             let action =
                 Self::get_first_child_id_matching(arena, act, BulletMLNode::match_any_action);

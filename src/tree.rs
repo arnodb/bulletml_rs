@@ -148,6 +148,14 @@ impl BulletMLNode {
             None
         }
     }
+
+    pub fn match_times(&self) -> Option<BulletMLExpression> {
+        if let BulletMLNode::Times(times) = self {
+            Some(*times)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug)]
