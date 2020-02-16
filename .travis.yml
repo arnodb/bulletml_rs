@@ -2,7 +2,7 @@ language: rust
 before_install:
     - |
       if [ "$TRAVIS_RUST_VERSION" = "nightly" ] && [ -z "$TRAVIS_TAG" ]; then
-        curl -L https://github.com/mozilla/grcov/releases/download/v0.5.0/grcov-linux-x86_64.tar.bz2 | tar jxf -
+        curl -L https://github.com/mozilla/grcov/releases/latest/download/grcov-linux-x86_64.tar.bz2 | tar jxf -
       fi
 matrix:
   include:
@@ -28,6 +28,6 @@ script:
     - |
       if [ "$COVERAGE" = "1" ] && [ -z "$TRAVIS_TAG" ]; then
         zip -0 ccov.zip `find . -name "bulletml*.gc*" -print`;
-        ./grcov ccov.zip -s . -t lcov --llvm --branch --ignore-not-existing --ignore-dir "/*" -o lcov.info;
+        ./grcov ccov.zip -s . -t lcov --llvm --branch --ignore-not-existing --ignore "/*" -o lcov.info;
         bash <(curl -s https://codecov.io/bash) -f lcov.info;
       fi
