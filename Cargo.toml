@@ -5,7 +5,7 @@ authors = ["Arnaud de Bossoreille <arnaud.debossoreille@gmail.com>"]
 edition = "2018"
 license-file = "LICENSE"
 description = "BulletML library in Rust"
-documentation = "https://docs.rs/bulletml_rs"
+documentation = "https://docs.rs/bulletml"
 repository = "https://github.com/arnodb/bulletml_rs"
 
 [dependencies]
