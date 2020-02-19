@@ -548,12 +548,13 @@ impl BulletMLParser {
 
     #[inline]
     fn node_pos(node: &roxmltree::Node) -> ParseErrorPos {
-        node.node_pos().into()
+        node.document().text_pos_at(node.range().start).into()
     }
 
     #[inline]
     fn attribute_value_pos(node: &roxmltree::Node, name: &str) -> ParseErrorPos {
-        node.attribute_value_pos(name)
+        node.attribute_node(name)
+            .map(|attr| node.document().text_pos_at(attr.value_range().start))
             .unwrap_or_else(|| TextPos { row: 0, col: 0 })
             .into()
     }
