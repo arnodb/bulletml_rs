@@ -3,6 +3,7 @@ use roxmltree::TextPos;
 use std::backtrace::Backtrace;
 use std::fmt::{Display, Formatter};
 
+/// All kinds of error that can happen during the parsing of an BulletML document.
 #[derive(Error, Debug, new)]
 pub enum ParseError {
     #[error("I/O error")]

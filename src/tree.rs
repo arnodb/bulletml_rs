@@ -158,6 +158,7 @@ impl BulletMLNode {
     }
 }
 
+/// Parsed representation of a BulletML document, ready to use by a [Runner](struct.Runner.html).
 #[derive(Debug)]
 pub struct BulletML {
     pub arena: Arena<BulletMLNode>,
@@ -166,4 +167,15 @@ pub struct BulletML {
     pub action_refs: HashMap<String, NodeId>,
     pub fire_refs: HashMap<String, NodeId>,
     pub expr_slab: fasteval::Slab,
+}
+
+impl BulletML {
+    pub(crate) fn get_type(&self) -> Option<BulletMLType> {
+        let root_node = &self.arena[self.root];
+        if let BulletMLNode::BulletML { bml_type } = root_node.get() {
+            *bml_type
+        } else {
+            panic!("Root node should be of type BulletML");
+        }
+    }
 }

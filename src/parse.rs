@@ -9,6 +9,7 @@ use std::fs;
 use std::io::prelude::*;
 use std::path;
 
+/// BulletML parser.
 pub struct BulletMLParser {
     arena: Arena<BulletMLNode>,
     bullet_refs: HashMap<String, NodeId>,
@@ -19,6 +20,11 @@ pub struct BulletMLParser {
 }
 
 impl BulletMLParser {
+    /// Creates a new parser with default capacities.
+    ///
+    /// Pay attention to the fact that the capacity of the expression parser cannot grow due to
+    /// `fasteval::Slab` implementation. If you need a higher capacity, refer to the
+    /// [with_capacities](#method.with_capacities) constructor.
     pub fn new() -> Self {
         BulletMLParser {
             arena: Arena::new(),
@@ -30,6 +36,13 @@ impl BulletMLParser {
         }
     }
 
+    /// Creates a new parser with custom capacities.
+    ///
+    /// `refs_capacity` is the initial capacity of references containers which can grow on demand.
+    ///
+    /// `expr_capacity` is the capacity of the expression parser which cannot grow. In order to
+    /// mitigate that limitation, the internal of this crate handle float literals without the help
+    /// of the expression parser.
     pub fn with_capacities(refs_capacity: usize, expr_capacity: usize) -> Self {
         BulletMLParser {
             arena: Arena::new(),
@@ -41,6 +54,8 @@ impl BulletMLParser {
         }
     }
 
+    /// Parses an input XML document and transforms it into a [BulletML](../struct.BulletML.html)
+    /// structure to be used by a [Runner](../struct.Runner.html).
     pub fn parse(mut self, s: &str) -> Result<BulletML, ParseError> {
         let doc = roxmltree::Document::parse(s)?;
         let root = doc.root_element();
@@ -64,6 +79,8 @@ impl BulletMLParser {
         }
     }
 
+    /// Parses an input XML file and transforms it into a [BulletML](../struct.BulletML.html)
+    /// structure to be used by a [Runner](../struct.Runner.html).
     pub fn parse_file<P: AsRef<path::Path>>(self, path: P) -> Result<BulletML, ParseError> {
         let mut file = fs::File::open(&path)?;
         let mut text = String::new();
