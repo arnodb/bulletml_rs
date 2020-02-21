@@ -1,6 +1,6 @@
 [package]
 name = "bulletml"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Arnaud de Bossoreille <arnaud.debossoreille@gmail.com>"]
 edition = "2018"
 license-file = "LICENSE"
