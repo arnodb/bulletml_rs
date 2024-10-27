@@ -34,7 +34,7 @@ pub struct Runner<R> {
     app_runner: R,
 }
 
-impl<'a, R> Runner<R> {
+impl<R> Runner<R> {
     /// Creates a new runner for all the "top" actions of the provided BulletML document.
     ///
     /// `app_runner` is the application runner which contains all the specific behaviours.
@@ -405,10 +405,10 @@ impl RunnerImpl {
         let now = runner.get_turn(data.data);
         let reset = if let Some(change_dir) = &self.change_dir {
             if change_dir.is_last(now) {
-                runner.do_change_direction(&mut data.data, change_dir.get_last());
+                runner.do_change_direction(data.data, change_dir.get_last());
                 true
             } else {
-                runner.do_change_direction(&mut data.data, change_dir.get_value(now));
+                runner.do_change_direction(data.data, change_dir.get_value(now));
                 false
             }
         } else {
@@ -419,10 +419,10 @@ impl RunnerImpl {
         }
         let reset = if let Some(change_spd) = &self.change_spd {
             if change_spd.is_last(now) {
-                runner.do_change_speed(&mut data.data, change_spd.get_last());
+                runner.do_change_speed(data.data, change_spd.get_last());
                 true
             } else {
-                runner.do_change_speed(&mut data.data, change_spd.get_value(now));
+                runner.do_change_speed(data.data, change_spd.get_value(now));
                 false
             }
         } else {
@@ -704,19 +704,18 @@ impl RunnerImpl {
             self.dir.set(default);
             self.prev_dir.set(default);
         }
-        let all_actions = self.act.map_or_else(
-            || Vec::new(),
-            |act| Self::get_children_ids_matching(arena, act, BulletMLNode::match_any_action),
-        );
+        let all_actions = self.act.map_or_else(Vec::new, |act| {
+            Self::get_children_ids_matching(arena, act, BulletMLNode::match_any_action)
+        });
         if all_actions.is_empty() {
-            runner.create_simple_bullet(&mut data.data, self.dir.get(), self.spd.get());
+            runner.create_simple_bullet(data.data, self.dir.get(), self.spd.get());
         } else {
             let state = State {
                 bml_type: self.bml_type,
                 nodes: all_actions.into_boxed_slice(),
                 parameters: self.parameters.clone(),
             };
-            runner.create_bullet(&mut data.data, state, self.dir.get(), self.spd.get());
+            runner.create_bullet(data.data, state, self.dir.get(), self.spd.get());
         }
         self.act = None;
     }
@@ -778,7 +777,7 @@ impl RunnerImpl {
         self.ref_stack.push(StackedRef {
             ref_id,
             prev: act,
-            prev_parameters: prev_parameters,
+            prev_parameters,
         });
         self.act = Some(ref_id);
     }
@@ -945,7 +944,7 @@ impl RunnerImpl {
     }
 
     fn run_vanish<D>(&mut self, data: &mut RunnerData<D>, runner: &mut dyn AppRunner<D>) {
-        runner.do_vanish(&mut data.data);
+        runner.do_vanish(data.data);
         self.act = None;
     }
 
@@ -970,7 +969,7 @@ impl RunnerImpl {
         match expr {
             BulletMLExpression::Const(value) => value,
             BulletMLExpression::Expr(expr) => {
-                let rank = runner.get_rank(&data.data);
+                let rank = runner.get_rank(data.data);
                 let expr_ref = expr.from(&data.bml.expr_slab.ps);
                 use fasteval::Evaler;
                 expr_ref
@@ -1430,6 +1429,7 @@ mod test_runner {
             logs[0].assert_log(&format!(r#"=== {}"#, i + 1), 1);
         }
 
+        #[allow(clippy::needless_range_loop)]
         for i in 1..3 {
             logs[i].assert_log(r#"=== 1"#, 1);
             logs[i].assert_log(r#"Action(None)"#, 1);
