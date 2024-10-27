@@ -11,6 +11,7 @@ jobs:
     uses: ./.github/workflows/_build.yml
     with:
       rust_toolchain: stable
+      rust_features:
       with_rustfmt: true
 
   main_1_56_1:
@@ -18,5 +19,6 @@ jobs:
     uses: ./.github/workflows/_build.yml
     with:
       rust_toolchain: 1.56.1
+      rust_features:
       with_clippy: true
 

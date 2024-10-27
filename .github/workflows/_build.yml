@@ -9,6 +9,7 @@ on:
       rust_features:
         required: false
         type: string
+        default: --all-features
       with_rustfmt:
         required: false
         type: boolean
@@ -23,7 +24,7 @@ env:
 
 jobs:
 
-  test:
+  build:
 
     name: Rust ${{ inputs.rust_toolchain }} ${{ inputs.rust_features }}
 
