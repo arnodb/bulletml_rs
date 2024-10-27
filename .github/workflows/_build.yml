@@ -1,0 +1,58 @@
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      rust_toolchain:
+        required: true
+        type: string
+      rust_features:
+        required: false
+        type: string
+      with_rustfmt:
+        required: false
+        type: boolean
+        default: false
+      with_clippy:
+        required: false
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+
+  test:
+
+    name: Rust ${{ inputs.rust_toolchain }} ${{ inputs.rust_features }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.rust_toolchain }}
+          components: rustfmt, clippy
+
+      - id: rustfmt
+        name: Rust format
+        if: ${{ inputs.with_rustfmt }}
+        run: |
+          cargo fmt --verbose --all -- --check
+          echo "Rustfmt OK" >> "$GITHUB_STEP_SUMMARY"
+
+      - id: clippy
+        name: Clippy
+        if: ${{ inputs.with_clippy }}
+        run: |
+          cargo clippy --all ${{ inputs.rust_features }} --all-targets -- -D warnings
+          echo "Clippy OK" >> "$GITHUB_STEP_SUMMARY"
+
+      - id: test
+        name: Compile and run tests
+        run: cargo test ${{ inputs.rust_features }} --verbose
+
