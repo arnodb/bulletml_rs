@@ -21,3 +21,6 @@ assert_matches = "1"
 
 [features]
 backtrace = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage,coverage_nightly)'] }
