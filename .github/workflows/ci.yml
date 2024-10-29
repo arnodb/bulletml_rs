@@ -22,3 +22,9 @@ jobs:
       rust_features:
       with_clippy: true
 
+  main_nightly:
+    name: Rust nightly
+    uses: ./.github/workflows/_build.yml
+    with:
+      rust_toolchain: nightly
+

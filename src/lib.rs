@@ -1,4 +1,4 @@
-#![cfg_attr(feature = "backtrace", feature(backtrace))]
+#![cfg_attr(feature = "backtrace", feature(backtrace, error_generic_member_access))]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 #[macro_use]
