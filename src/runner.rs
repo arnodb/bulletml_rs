@@ -996,10 +996,12 @@ struct RepeatElem {
 }
 
 #[cfg(test)]
-mod test_runner {
-    use super::{AppRunner, Runner, RunnerData, State};
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
     use crate::parse::BulletMLParser;
     use crate::tree::{BulletML, BulletMLNode};
+
+    use super::*;
 
     pub struct TestAppRunner {
         index: usize,

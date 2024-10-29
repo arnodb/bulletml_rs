@@ -17,7 +17,7 @@ roxmltree = "0.9"
 thiserror = "1.0"
 
 [dev-dependencies]
-matches = "0.1"
+assert_matches = "1"
 
 [features]
 backtrace = []

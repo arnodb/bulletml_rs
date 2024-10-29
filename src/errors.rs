@@ -95,8 +95,8 @@ pub enum ParseError {
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct ParseErrorPos {
-    pub row: u32,
-    pub col: u32,
+    row: u32,
+    col: u32,
 }
 
 impl ParseErrorPos {

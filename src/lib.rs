@@ -1,10 +1,11 @@
 #![cfg_attr(feature = "backtrace", feature(backtrace))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 #[macro_use]
 extern crate derive_new;
 #[cfg(test)]
 #[macro_use]
-extern crate matches;
+extern crate assert_matches;
 #[macro_use]
 extern crate thiserror;
 

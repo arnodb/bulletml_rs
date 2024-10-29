@@ -583,72 +583,77 @@ impl Default for BulletMLParser {
     }
 }
 
-#[test]
-fn test_bulletml() {
-    let bml = BulletMLParser::new()
-        .parse(
-            r##"<?xml version="1.0" ?>
+#[cfg(test)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bulletml() {
+        let bml = BulletMLParser::new()
+            .parse(
+                r##"<?xml version="1.0" ?>
 <bulletml />"##,
-        )
-        .unwrap();
-    assert_matches!(
-        bml.arena[bml.root].get(),
-        &BulletMLNode::BulletML { bml_type: None }
-    );
-}
+            )
+            .unwrap();
+        assert_matches!(
+            bml.arena[bml.root].get(),
+            &BulletMLNode::BulletML { bml_type: None }
+        );
+    }
 
-#[test]
-fn test_bulletml_type_none() {
-    let bml = BulletMLParser::new()
-        .parse(
-            r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_bulletml_type_none() {
+        let bml = BulletMLParser::new()
+            .parse(
+                r##"<?xml version="1.0" ?>
 <bulletml type="none" />"##,
-        )
-        .unwrap();
-    assert_matches!(
-        bml.arena[bml.root].get(),
-        &BulletMLNode::BulletML { bml_type: None }
-    );
-}
+            )
+            .unwrap();
+        assert_matches!(
+            bml.arena[bml.root].get(),
+            &BulletMLNode::BulletML { bml_type: None }
+        );
+    }
 
-#[test]
-fn test_bulletml_type_vertical() {
-    let bml = BulletMLParser::new()
-        .parse(
-            r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_bulletml_type_vertical() {
+        let bml = BulletMLParser::new()
+            .parse(
+                r##"<?xml version="1.0" ?>
 <bulletml type="vertical" />"##,
-        )
-        .unwrap();
-    assert_matches!(
-        bml.arena[bml.root].get(),
-        &BulletMLNode::BulletML {
-            bml_type: Some(BulletMLType::Vertical)
-        }
-    );
-}
+            )
+            .unwrap();
+        assert_matches!(
+            bml.arena[bml.root].get(),
+            &BulletMLNode::BulletML {
+                bml_type: Some(BulletMLType::Vertical)
+            }
+        );
+    }
 
-#[test]
-fn test_bulletml_type_horizontal() {
-    let bml = BulletMLParser::new()
-        .parse(
-            r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_bulletml_type_horizontal() {
+        let bml = BulletMLParser::new()
+            .parse(
+                r##"<?xml version="1.0" ?>
 <bulletml type="horizontal" />"##,
-        )
-        .unwrap();
-    assert_matches!(
-        bml.arena[bml.root].get(),
-        &BulletMLNode::BulletML {
-            bml_type: Some(BulletMLType::Horizontal)
-        }
-    );
-}
+            )
+            .unwrap();
+        assert_matches!(
+            bml.arena[bml.root].get(),
+            &BulletMLNode::BulletML {
+                bml_type: Some(BulletMLType::Horizontal)
+            }
+        );
+    }
 
-#[test]
-fn test_full_bulletml() {
-    // This covers all the good branches of the parser.
-    BulletMLParser::new()
-        .parse(
-            r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_full_bulletml() {
+        // This covers all the good branches of the parser.
+        BulletMLParser::new()
+            .parse(
+                r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet label="b1">
         <direction>0</direction>
@@ -706,160 +711,172 @@ fn test_full_bulletml() {
         <actionRef label="a1" />
     </bullet>
 </bulletml>"##,
-        )
-        .unwrap();
-}
+            )
+            .unwrap();
+    }
 
-#[test]
-fn test_unexpected_root() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unexpected_root() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <foo />"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnexpectedElement {
-            ref element,
-            pos: ParseErrorPos { row: 2, col: 1 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if element == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unexpected element foo at position 2:1"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (element, pos) = assert_matches!(
+            err,
+            ParseError::UnexpectedElement {
+                ref element,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (element, pos)
+        );
+        assert_eq!(element, "foo");
+        assert_eq!((pos.row(), pos.col()), (2, 1));
+        assert_eq!(
+            format!("{}", &err),
+            "Unexpected element foo at position 2:1"
+        );
+    }
 
-#[test]
-fn test_unrecognized_bml_type() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unrecognized_bml_type() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml type="foo" />"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnrecognizedBmlType {
-            ref bml_type,
-            pos: ParseErrorPos { row: 2, col: 17 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        }  if bml_type == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unrecognized BulletML type foo at position 2:17"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (bml_type, pos) = assert_matches!(
+            err,
+            ParseError::UnrecognizedBmlType {
+                ref bml_type,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (bml_type, pos)
+        );
+        assert_eq!(bml_type, "foo");
+        assert_eq!((pos.row(), pos.col()), (2, 17));
+        assert_eq!(
+            format!("{}", &err),
+            "Unrecognized BulletML type foo at position 2:17"
+        );
+    }
 
-#[test]
-fn test_unexpected_bulletml_child() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unexpected_bulletml_child() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <foo />
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnexpectedElement {
-            ref element,
-            pos: ParseErrorPos { row: 3, col: 5 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if element == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unexpected element foo at position 3:5"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (element, pos) = assert_matches!(
+            err,
+            ParseError::UnexpectedElement {
+                ref element,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (element, pos)
+        );
+        assert_eq!(element, "foo");
+        assert_eq!((pos.row(), pos.col()), (3, 5));
+        assert_eq!(
+            format!("{}", &err),
+            "Unexpected element foo at position 3:5"
+        );
+    }
 
-#[test]
-fn test_unexpected_bullet_child() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unexpected_bullet_child() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet>
         <foo />
     </bullet>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnexpectedElement {
-            ref element,
-            pos: ParseErrorPos { row: 4, col: 9 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if element == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unexpected element foo at position 4:9"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (element, pos) = assert_matches!(
+            err,
+            ParseError::UnexpectedElement {
+                ref element,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (element, pos)
+        );
+        assert_eq!(element, "foo");
+        assert_eq!((pos.row(), pos.col()), (4, 9));
+        assert_eq!(
+            format!("{}", &err),
+            "Unexpected element foo at position 4:9"
+        );
+    }
 
-#[test]
-fn test_unexpected_action_child() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unexpected_action_child() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
         <foo />
     </action>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnexpectedElement {
-            ref element,
-            pos: ParseErrorPos { row: 4, col: 9 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if element == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unexpected element foo at position 4:9"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (element, pos) = assert_matches!(
+            err,
+            ParseError::UnexpectedElement {
+                ref element,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (element, pos)
+        );
+        assert_eq!(element, "foo");
+        assert_eq!((pos.row(), pos.col()), (4, 9));
+        assert_eq!(
+            format!("{}", &err),
+            "Unexpected element foo at position 4:9"
+        );
+    }
 
-#[test]
-fn test_unexpected_fire_child() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unexpected_fire_child() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <fire>
         <foo />
     </fire>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnexpectedElement {
-            ref element,
-            pos: ParseErrorPos { row: 4, col: 9 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if element == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unexpected element foo at position 4:9"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (element, pos) = assert_matches!(
+            err,
+            ParseError::UnexpectedElement {
+                ref element,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (element, pos)
+        );
+        assert_eq!(element, "foo");
+        assert_eq!((pos.row(), pos.col()), (4, 9));
+        assert_eq!(
+            format!("{}", &err),
+            "Unexpected element foo at position 4:9"
+        );
+    }
 
-#[test]
-fn test_unexpected_change_direction_child() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unexpected_change_direction_child() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
         <changeDirection>
@@ -867,27 +884,29 @@ fn test_unexpected_change_direction_child() {
         </changeDirection>
     </action>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnexpectedElement {
-            ref element,
-            pos: ParseErrorPos { row: 5, col: 13 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if element == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unexpected element foo at position 5:13"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (element, pos) = assert_matches!(
+            err,
+            ParseError::UnexpectedElement {
+                ref element,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (element, pos)
+        );
+        assert_eq!(element, "foo");
+        assert_eq!((pos.row(), pos.col()), (5, 13));
+        assert_eq!(
+            format!("{}", &err),
+            "Unexpected element foo at position 5:13"
+        );
+    }
 
-#[test]
-fn test_unexpected_change_speed_child() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unexpected_change_speed_child() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
         <changeSpeed>
@@ -895,27 +914,29 @@ fn test_unexpected_change_speed_child() {
         </changeSpeed>
     </action>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnexpectedElement {
-            ref element,
-            pos: ParseErrorPos { row: 5, col: 13 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if element == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unexpected element foo at position 5:13"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (element, pos) = assert_matches!(
+            err,
+            ParseError::UnexpectedElement {
+                ref element,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (element, pos)
+        );
+        assert_eq!(element, "foo");
+        assert_eq!((pos.row(), pos.col()), (5, 13));
+        assert_eq!(
+            format!("{}", &err),
+            "Unexpected element foo at position 5:13"
+        );
+    }
 
-#[test]
-fn test_unexpected_accel_child() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unexpected_accel_child() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
         <accel>
@@ -923,27 +944,29 @@ fn test_unexpected_accel_child() {
         </accel>
     </action>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnexpectedElement {
-            ref element,
-            pos: ParseErrorPos { row: 5, col: 13 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if element == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unexpected element foo at position 5:13"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (element, pos) = assert_matches!(
+            err,
+            ParseError::UnexpectedElement {
+                ref element,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (element, pos)
+        );
+        assert_eq!(element, "foo");
+        assert_eq!((pos.row(), pos.col()), (5, 13));
+        assert_eq!(
+            format!("{}", &err),
+            "Unexpected element foo at position 5:13"
+        );
+    }
 
-#[test]
-fn test_unexpected_repeat_child() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unexpected_repeat_child() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
         <repeat>
@@ -951,79 +974,85 @@ fn test_unexpected_repeat_child() {
         </repeat>
     </action>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnexpectedElement {
-            ref element,
-            pos: ParseErrorPos { row: 5, col: 13 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if element == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unexpected element foo at position 5:13"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (element, pos) = assert_matches!(
+            err,
+            ParseError::UnexpectedElement {
+                ref element,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (element, pos)
+        );
+        assert_eq!(element, "foo");
+        assert_eq!((pos.row(), pos.col()), (5, 13));
+        assert_eq!(
+            format!("{}", &err),
+            "Unexpected element foo at position 5:13"
+        );
+    }
 
-#[test]
-fn test_unrecognized_direction_type() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unrecognized_direction_type() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet>
         <direction type="foo" />
     </bullet>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnrecognizedDirectionType {
-            ref dir_type,
-            pos: ParseErrorPos { row: 4, col: 26 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if dir_type == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unrecognized direction type foo at position 4:26"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (dir_type, pos) = assert_matches!(
+            err,
+            ParseError::UnrecognizedDirectionType {
+                ref dir_type,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (dir_type, pos)
+        );
+        assert_eq!(dir_type, "foo");
+        assert_eq!((pos.row(), pos.col()), (4, 26));
+        assert_eq!(
+            format!("{}", &err),
+            "Unrecognized direction type foo at position 4:26"
+        );
+    }
 
-#[test]
-fn test_unrecognized_speed_type() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unrecognized_speed_type() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet>
         <speed type="foo" />
     </bullet>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnrecognizedSpeedType {
-            ref speed_type,
-            pos: ParseErrorPos { row: 4, col: 22 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if speed_type == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unrecognized speed type foo at position 4:22"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (speed_type, pos) = assert_matches!(
+            err,
+            ParseError::UnrecognizedSpeedType {
+                ref speed_type,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (speed_type, pos)
+        );
+        assert_eq!(speed_type, "foo");
+        assert_eq!((pos.row(), pos.col()), (4, 22));
+        assert_eq!(
+            format!("{}", &err),
+            "Unrecognized speed type foo at position 4:22"
+        );
+    }
 
-#[test]
-fn test_unrecognized_accel_horizontal_type() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unrecognized_accel_horizontal_type() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
         <accel>
@@ -1031,27 +1060,29 @@ fn test_unrecognized_accel_horizontal_type() {
         </accel>
     </action>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnrecognizedAccelDirType {
-            ref accel_dir_type,
-            pos: ParseErrorPos { row: 5, col: 31 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if accel_dir_type == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unrecognized acceleration direction type foo at position 5:31"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (accel_dir_type, pos) = assert_matches!(
+            err,
+            ParseError::UnrecognizedAccelDirType {
+                ref accel_dir_type,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (accel_dir_type, pos)
+        );
+        assert_eq!(accel_dir_type, "foo");
+        assert_eq!((pos.row(), pos.col()), (5, 31));
+        assert_eq!(
+            format!("{}", &err),
+            "Unrecognized acceleration direction type foo at position 5:31"
+        );
+    }
 
-#[test]
-fn test_unrecognized_accel_vertical_type() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unrecognized_accel_vertical_type() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
         <accel>
@@ -1059,54 +1090,59 @@ fn test_unrecognized_accel_vertical_type() {
         </accel>
     </action>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnrecognizedAccelDirType {
-            ref accel_dir_type,
-            pos: ParseErrorPos { row: 5, col: 29 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if accel_dir_type == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unrecognized acceleration direction type foo at position 5:29"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (accel_dir_type, pos) = assert_matches!(
+            err,
+            ParseError::UnrecognizedAccelDirType {
+                ref accel_dir_type,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (accel_dir_type, pos)
+        );
+        assert_eq!(accel_dir_type, "foo");
+        assert_eq!((pos.row(), pos.col()), (5, 29));
+        assert_eq!(
+            format!("{}", &err),
+            "Unrecognized acceleration direction type foo at position 5:29"
+        );
+    }
 
-#[test]
-fn test_missing_bullet_ref_label() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_missing_bullet_ref_label() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <fire>
         <bulletRef />
     </fire>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::MissingAttribute {
-            ref attribute,
-            ref element,
-            pos: ParseErrorPos { row: 4, col: 9 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if attribute == "label" && element == "bulletRef"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Missing attribute label in element bulletRef at position 4:9"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (attribute, element, pos) = assert_matches!(
+            err,
+            ParseError::MissingAttribute {
+                ref attribute,
+                ref element,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (attribute, element, pos)
+        );
+        assert_eq!(attribute, "label");
+        assert_eq!(element, "bulletRef");
+        assert_eq!((pos.row(), pos.col()), (4, 9));
+        assert_eq!(
+            format!("{}", &err),
+            "Missing attribute label in element bulletRef at position 4:9"
+        );
+    }
 
-#[test]
-fn test_unexpected_bullet_ref_child() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unexpected_bullet_ref_child() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <fire>
         <bulletRef label="bar">
@@ -1114,54 +1150,59 @@ fn test_unexpected_bullet_ref_child() {
         </bulletRef>
     </fire>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnexpectedElement {
-            ref element,
-            pos: ParseErrorPos { row: 5, col: 13 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if element == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unexpected element foo at position 5:13"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (element, pos) = assert_matches!(
+            err,
+            ParseError::UnexpectedElement {
+                ref element,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (element, pos)
+        );
+        assert_eq!(element, "foo");
+        assert_eq!((pos.row(), pos.col()), (5, 13));
+        assert_eq!(
+            format!("{}", &err),
+            "Unexpected element foo at position 5:13"
+        );
+    }
 
-#[test]
-fn test_missing_action_ref_label() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_missing_action_ref_label() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet>
         <actionRef />
     </bullet>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::MissingAttribute {
-            ref attribute,
-            ref element,
-            pos: ParseErrorPos { row: 4, col: 9 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if attribute == "label" && element == "actionRef"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Missing attribute label in element actionRef at position 4:9"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (attribute, element, pos) = assert_matches!(
+            err,
+            ParseError::MissingAttribute {
+                ref attribute,
+                ref element,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (attribute, element, pos)
+        );
+        assert_eq!(attribute, "label");
+        assert_eq!(element, "actionRef");
+        assert_eq!((pos.row(), pos.col()), (4, 9));
+        assert_eq!(
+            format!("{}", &err),
+            "Missing attribute label in element actionRef at position 4:9"
+        );
+    }
 
-#[test]
-fn test_unexpected_action_ref_child() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unexpected_action_ref_child() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet>
         <actionRef label="bar">
@@ -1169,54 +1210,59 @@ fn test_unexpected_action_ref_child() {
         </actionRef>
     </bullet>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnexpectedElement {
-            ref element,
-            pos: ParseErrorPos { row: 5, col: 13 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if element == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unexpected element foo at position 5:13"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (element, pos) = assert_matches!(
+            err,
+            ParseError::UnexpectedElement {
+                ref element,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (element, pos)
+        );
+        assert_eq!(element, "foo");
+        assert_eq!((pos.row(), pos.col()), (5, 13));
+        assert_eq!(
+            format!("{}", &err),
+            "Unexpected element foo at position 5:13"
+        );
+    }
 
-#[test]
-fn test_missing_fire_ref_label() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_missing_fire_ref_label() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
         <fireRef />
     </action>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::MissingAttribute {
-            ref attribute,
-            ref element,
-            pos: ParseErrorPos { row: 4, col: 9 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if attribute == "label" && element == "fireRef"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Missing attribute label in element fireRef at position 4:9"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (attribute, element, pos) = assert_matches!(
+            err,
+            ParseError::MissingAttribute {
+                ref attribute,
+                ref element,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (attribute, element, pos)
+        );
+        assert_eq!(attribute, "label");
+        assert_eq!(element, "fireRef");
+        assert_eq!((pos.row(), pos.col()), (4, 9));
+        assert_eq!(
+            format!("{}", &err),
+            "Missing attribute label in element fireRef at position 4:9"
+        );
+    }
 
-#[test]
-fn test_unexpected_fire_ref_child() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unexpected_fire_ref_child() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <action>
         <fireRef label="bar">
@@ -1224,75 +1270,81 @@ fn test_unexpected_fire_ref_child() {
         </fireRef>
     </action>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnexpectedElement {
-            ref element,
-            pos: ParseErrorPos { row: 5, col: 13 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if element == "foo"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unexpected element foo at position 5:13"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (element, pos) = assert_matches!(
+            err,
+            ParseError::UnexpectedElement {
+                ref element,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (element, pos)
+        );
+        assert_eq!(element, "foo");
+        assert_eq!((pos.row(), pos.col()), (5, 13));
+        assert_eq!(
+            format!("{}", &err),
+            "Unexpected element foo at position 5:13"
+        );
+    }
 
-#[test]
-fn test_unexpected_node_type_in_expression() {
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+    #[test]
+    fn test_unexpected_node_type_in_expression() {
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet>
         <direction><foo /></direction>
     </bullet>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::UnexpectedNodeType {
-            ref node_type,
-            pos: ParseErrorPos { row: 4, col: 20 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        } if node_type == "Element"
-    );
-    assert_eq!(
-        format!("{}", &err),
-        "Unexpected node of type Element at position 4:20"
-    );
-}
+        );
+        let err = bml.unwrap_err();
+        let (node_type, pos) = assert_matches!(
+            err,
+            ParseError::UnexpectedNodeType {
+                ref node_type,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => (node_type, pos)
+        );
+        assert_eq!(node_type, "Element");
+        assert_eq!((pos.row(), pos.col()), (4, 20));
+        assert_eq!(
+            format!("{}", &err),
+            "Unexpected node of type Element at position 4:20"
+        );
+    }
 
-#[test]
-fn test_expression_error() {
-    use std::error::Error;
+    #[test]
+    fn test_expression_error() {
+        use std::error::Error;
 
-    let bml = BulletMLParser::new().parse(
-        r##"<?xml version="1.0" ?>
+        let bml = BulletMLParser::new().parse(
+            r##"<?xml version="1.0" ?>
 <bulletml>
     <bullet>
         <direction>-</direction>
     </bullet>
 </bulletml>"##,
-    );
-    let err = bml.unwrap_err();
-    assert_matches!(
-        err,
-        ParseError::Expression {
-            source: _,
-            pos: ParseErrorPos { row: 4, col: 20 },
-            #[cfg(feature = "backtrace")]
-            backtrace: _,
-        }
-    );
-    let cause = err.source().unwrap().downcast_ref::<fasteval::Error>();
-    assert_matches!(
-        cause,
-        Some(&fasteval::Error::EofWhileParsing(ref s)) if s.as_str() == "value"
-    );
-    assert_eq!(format!("{}", &err), "Expression error at position 4:20");
+        );
+        let err = bml.unwrap_err();
+        let pos = assert_matches!(
+            err,
+            ParseError::Expression {
+                source: _,
+                pos,
+                #[cfg(feature = "backtrace")]
+                backtrace: _,
+            } => pos
+        );
+        assert_eq!((pos.row(), pos.col()), (4, 20));
+        let cause = err.source().unwrap().downcast_ref::<fasteval::Error>();
+        assert_matches!(
+            cause,
+            Some(&fasteval::Error::EofWhileParsing(ref s)) if s.as_str() == "value"
+        );
+        assert_eq!(format!("{}", &err), "Expression error at position 4:20");
+    }
 }
